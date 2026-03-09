@@ -1,0 +1,57 @@
+{
+    "id": "meetings",
+    "name": "meetings",
+    "type": "base",
+    "schema": [
+        {
+            "name": "meeting_id",
+            "type": "text",
+            "required": true,
+            "options": {
+                "min": 8,
+                "max": 8
+            }
+        },
+        {
+            "name": "passcode",
+            "type": "text",
+            "required": true,
+            "options": {
+                "min": 6,
+                "max": 6
+            }
+        },
+        {
+            "name": "host_name",
+            "type": "text",
+            "required": true
+        },
+        {
+            "name": "status",
+            "type": "select",
+            "required": true,
+            "options": {
+                "values": [
+                    "scheduled",
+                    "active",
+                    "ended"
+                ]
+            }
+        },
+        {
+            "name": "scheduled_at",
+            "type": "date",
+            "required": false
+        },
+        {
+            "name": "started_at",
+            "type": "date",
+            "required": false
+        },
+        {
+            "name": "ended_at",
+            "type": "date",
+            "required": false
+        }
+    ]
+}

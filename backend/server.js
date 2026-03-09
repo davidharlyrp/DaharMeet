@@ -2,160 +2,194 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const { v4: uuidv4 } = require('uuid');
-const fs = require('fs');
-const path = require('path');
+require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
+
+// Production CORS: restrict to FRONTEND_URL if provided
+const allowedOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : "*";
 const io = new Server(server, {
     cors: {
-        origin: "*",
+        origin: allowedOrigins,
         methods: ["GET", "POST"]
     }
 });
 
-app.use(cors());
+app.use(cors({
+    origin: allowedOrigins
+}));
 app.use(express.json());
 
-// Data storage
-const DATA_DIR = path.join(__dirname, 'data');
-if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+// PocketBase setup
+const POCKETBASE_URL = process.env.POCKETBASE_URL;
+let pb;
+
+async function initPocketBase() {
+    if (!POCKETBASE_URL) {
+        throw new Error('POCKETBASE_URL is not defined in environment variables');
+    }
+    const PocketBase = (await import('pocketbase')).default;
+    pb = new PocketBase(POCKETBASE_URL);
+    pb.autoCancellation(false);
+    console.log(`PocketBase connected to ${POCKETBASE_URL}`);
 }
 
-const MEETINGS_FILE = path.join(DATA_DIR, 'meetings.json');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
+// In-memory storage for real-time data (transient, not persisted)
+const activeMeetings = {};
 
-// Helper functions
-const loadData = (file) => {
-    try {
-        if (fs.existsSync(file)) {
-            return JSON.parse(fs.readFileSync(file, 'utf8'));
-        }
-    } catch (e) {
-        console.error('Error loading data:', e);
+// Helper: sanitize input for PocketBase filters
+const sanitizeFilter = (val) => val.replace(/['"\\\b\f\n\r\t]/g, '');
+
+const getActiveMeeting = (meetingId) => {
+    if (!activeMeetings[meetingId]) {
+        activeMeetings[meetingId] = {
+            participants: {},
+            screenSharer: null,
+            messages: []
+        };
     }
-    return {};
+    return activeMeetings[meetingId];
 };
 
-const saveData = (file, data) => {
-    try {
-        const content = JSON.stringify(data, null, 2);
-        fs.writeFileSync(file, content);
-        console.log(`Data successfully saved to ${file}. Entries: ${Object.keys(data).length}`);
-    } catch (e) {
-        console.error(`Error saving data to ${file}:`, e);
-    }
-};
-
-// In-memory storage
-let meetings = loadData(MEETINGS_FILE);
-let users = loadData(USERS_FILE);
-
-// Generate 8-digit meeting ID
 const generateMeetingId = () => {
     return Math.floor(10000000 + Math.random() * 90000000).toString();
 };
 
-// Generate 6-digit passcode
 const generatePasscode = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// API Routes
+app.post('/api/meetings', async (req, res) => {
+    try {
+        const { hostName, meetingName, scheduledAt } = req.body;
+        const meetingId = generateMeetingId();
+        const passcode = generatePasscode();
 
-// Create meeting
-app.post('/api/meetings', (req, res) => {
-    const { hostName } = req.body;
-    const meetingId = generateMeetingId();
-    const passcode = generatePasscode();
-
-    const meeting = {
-        id: meetingId,
-        passcode,
-        hostName: hostName || 'Host',
-        createdAt: new Date().toISOString(),
-        participants: {},
-        screenSharer: null,
-        messages: []
-    };
-
-    meetings[meetingId] = meeting;
-    console.log(`New meeting created: ${meetingId}. Total meetings in memory: ${Object.keys(meetings).length}`);
-    saveData(MEETINGS_FILE, meetings);
-
-    res.json({
-        success: true,
-        meeting: {
-            id: meetingId,
+        const record = await pb.collection('meetings').create({
+            meeting_id: meetingId,
             passcode,
-            hostName: meeting.hostName
+            host_name: hostName || 'Host',
+            meeting_name: meetingName || 'Dahar Meet',
+            status: scheduledAt ? 'scheduled' : 'active',
+            scheduled_at: scheduledAt || null,
+            started_at: scheduledAt ? null : new Date().toISOString(),
+        });
+
+        console.log(`New meeting created: ${meetingId} (PB record: ${record.id})`);
+
+        res.json({
+            success: true,
+            meeting: {
+                id: meetingId,
+                passcode,
+                hostName: hostName || 'Host',
+                meetingName: record.meeting_name
+            }
+        });
+    } catch (e) {
+        console.error('Error creating meeting:', e);
+        res.status(500).json({ success: false, error: 'Failed to create meeting' });
+    }
+});
+
+app.get('/api/meetings/:id', async (req, res) => {
+    try {
+        const id = sanitizeFilter(req.params.id);
+        const records = await pb.collection('meetings').getList(1, 1, {
+            filter: `meeting_id = "${id}"`,
+        });
+
+        if (records.items.length === 0) {
+            return res.status(404).json({ success: false, error: 'Meeting not found' });
         }
-    });
+
+        const meeting = records.items[0];
+        const active = activeMeetings[id];
+        const participantCount = active ? Object.keys(active.participants).length : 0;
+
+        res.json({
+            success: true,
+            meeting: {
+                id: meeting.meeting_id,
+                hostName: meeting.host_name,
+                meetingName: meeting.meeting_name,
+                status: meeting.status,
+                scheduledAt: meeting.scheduled_at,
+                participantCount
+            }
+        });
+    } catch (e) {
+        console.error('Error getting meeting:', e);
+        res.status(500).json({ success: false, error: 'Failed to get meeting' });
+    }
 });
 
-// Get meeting info
-app.get('/api/meetings/:id', (req, res) => {
-    const { id } = req.params;
-    const meeting = meetings[id];
+app.post('/api/meetings/:id/validate', async (req, res) => {
+    try {
+        const id = sanitizeFilter(req.params.id);
+        const { passcode } = req.body;
 
-    if (!meeting) {
-        return res.status(404).json({ success: false, error: 'Meeting not found' });
-    }
+        const records = await pb.collection('meetings').getList(1, 1, {
+            filter: `meeting_id = "${id}"`,
+        });
 
-    res.json({
-        success: true,
-        meeting: {
-            id: meeting.id,
-            hostName: meeting.hostName,
-            participantCount: Object.keys(meeting.participants).length
+        if (records.items.length === 0) {
+            return res.status(404).json({ success: false, error: 'Meeting not found' });
         }
-    });
+
+        const meeting = records.items[0];
+        if (meeting.passcode !== passcode) {
+            return res.status(403).json({ success: false, error: 'Invalid passcode' });
+        }
+
+        res.json({ success: true });
+    } catch (e) {
+        console.error('Error validating passcode:', e);
+        res.status(500).json({ success: false, error: 'Failed to validate passcode' });
+    }
 });
 
-// Validate meeting passcode
-app.post('/api/meetings/:id/validate', (req, res) => {
-    const { id } = req.params;
-    const { passcode } = req.body;
-    const meeting = meetings[id];
-
-    if (!meeting) {
-        return res.status(404).json({ success: false, error: 'Meeting not found' });
+const findMeetingRecord = async (meetingId) => {
+    try {
+        const id = sanitizeFilter(meetingId);
+        const records = await pb.collection('meetings').getList(1, 1, {
+            filter: `meeting_id = "${id}"`,
+        });
+        return records.items.length > 0 ? records.items[0] : null;
+    } catch (e) {
+        console.error('Error finding meeting record:', e);
+        return null;
     }
+};
 
-    if (meeting.passcode !== passcode) {
-        return res.status(403).json({ success: false, error: 'Invalid passcode' });
-    }
-
-    res.json({ success: true });
-});
-
-// Socket.IO handling
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
     let currentMeeting = null;
-    let userId = null;
+    let userId = socket.id;
     let userName = null;
 
-    // Join meeting
-    socket.on('join-meeting', ({ meetingId, passcode, name }, callback) => {
-        const meeting = meetings[meetingId];
+    socket.on('join-meeting', async ({ meetingId, passcode, name }, callback) => {
+        const record = await findMeetingRecord(meetingId);
+        if (!record) return callback({ success: false, error: 'Meeting not found' });
+        if (record.passcode !== passcode) return callback({ success: false, error: 'Invalid passcode' });
 
-        if (!meeting) {
-            return callback({ success: false, error: 'Meeting not found' });
-        }
-
-        if (meeting.passcode !== passcode) {
-            return callback({ success: false, error: 'Invalid passcode' });
+        if (record.status === 'scheduled') {
+            try {
+                await pb.collection('meetings').update(record.id, {
+                    status: 'active',
+                    started_at: new Date().toISOString()
+                });
+            } catch (e) {
+                console.error('Error updating meeting status:', e);
+            }
         }
 
         currentMeeting = meetingId;
-        userId = socket.id;
         userName = name || `User ${Math.floor(Math.random() * 1000)}`;
+        const active = getActiveMeeting(meetingId);
 
-        // Add participant
-        meeting.participants[userId] = {
+        active.participants[userId] = {
             id: userId,
             name: userName,
             socketId: socket.id,
@@ -164,162 +198,135 @@ io.on('connection', (socket) => {
             isScreenSharing: false
         };
 
-        saveData(MEETINGS_FILE, meetings);
-
-        // Join socket room
         socket.join(meetingId);
-
-        // Notify others
         socket.to(meetingId).emit('user-joined', {
             userId,
             name: userName,
-            participant: meeting.participants[userId]
+            participant: active.participants[userId]
         });
 
-        // Send current state to new user
         callback({
             success: true,
             userId,
-            participants: meeting.participants,
-            messages: meeting.messages,
-            screenSharer: meeting.screenSharer
+            participants: active.participants,
+            messages: active.messages,
+            screenSharer: active.screenSharer
         });
-
         console.log(`${userName} joined meeting ${meetingId}`);
     });
 
-    // WebRTC Signaling - Offer
     socket.on('offer', ({ targetId, offer }) => {
-        io.to(targetId).emit('offer', {
-            senderId: userId,
-            senderName: userName,
-            offer
-        });
+        io.to(targetId).emit('offer', { senderId: userId, senderName: userName, offer });
     });
 
-    // WebRTC Signaling - Answer
     socket.on('answer', ({ targetId, answer }) => {
-        io.to(targetId).emit('answer', {
-            senderId: userId,
-            answer
-        });
+        io.to(targetId).emit('answer', { senderId: userId, answer });
     });
 
-    // WebRTC Signaling - ICE Candidate
     socket.on('ice-candidate', ({ targetId, candidate }) => {
-        io.to(targetId).emit('ice-candidate', {
-            senderId: userId,
-            candidate
-        });
+        io.to(targetId).emit('ice-candidate', { senderId: userId, candidate });
     });
 
-    // Update media state (mic/cam)
     socket.on('media-state-change', ({ isMicOn, isCamOn }) => {
-        if (currentMeeting && meetings[currentMeeting]) {
-            const participant = meetings[currentMeeting].participants[userId];
+        if (currentMeeting && activeMeetings[currentMeeting]) {
+            const participant = activeMeetings[currentMeeting].participants[userId];
             if (participant) {
                 participant.isMicOn = isMicOn;
                 participant.isCamOn = isCamOn;
-                saveData(MEETINGS_FILE, meetings);
-
-                socket.to(currentMeeting).emit('media-state-changed', {
-                    userId,
-                    isMicOn,
-                    isCamOn
-                });
+                socket.to(currentMeeting).emit('media-state-changed', { userId, isMicOn, isCamOn });
             }
         }
     });
 
-    // Request screen share
     socket.on('request-screen-share', (callback) => {
-        if (currentMeeting && meetings[currentMeeting]) {
-            const meeting = meetings[currentMeeting];
-            if (meeting.screenSharer && meeting.screenSharer !== userId) {
-                return callback({
-                    success: false,
-                    error: 'Someone is already sharing their screen'
-                });
+        if (currentMeeting && activeMeetings[currentMeeting]) {
+            const active = activeMeetings[currentMeeting];
+            if (active.screenSharer && active.screenSharer !== userId) {
+                return callback({ success: false, error: 'Someone is already sharing their screen' });
             }
-            meeting.screenSharer = userId;
-            const participant = meeting.participants[userId];
-            if (participant) {
-                participant.isScreenSharing = true;
-            }
-            saveData(MEETINGS_FILE, meetings);
-
-            // Notify all participants
-            io.to(currentMeeting).emit('screen-share-started', {
-                userId,
-                userName
-            });
+            active.screenSharer = userId;
+            const participant = active.participants[userId];
+            if (participant) participant.isScreenSharing = true;
+            io.to(currentMeeting).emit('screen-share-started', { userId, userName });
             callback({ success: true });
         }
     });
 
-    // Stop screen share
     socket.on('stop-screen-share', () => {
-        if (currentMeeting && meetings[currentMeeting]) {
-            const meeting = meetings[currentMeeting];
-            if (meeting.screenSharer === userId) {
-                meeting.screenSharer = null;
-                const participant = meeting.participants[userId];
-                if (participant) {
-                    participant.isScreenSharing = false;
-                }
-                saveData(MEETINGS_FILE, meetings);
-                io.to(currentMeeting).emit('screen-share-stopped', {
-                    userId
-                });
+        if (currentMeeting && activeMeetings[currentMeeting]) {
+            const active = activeMeetings[currentMeeting];
+            if (active.screenSharer === userId) {
+                active.screenSharer = null;
+                const participant = active.participants[userId];
+                if (participant) participant.isScreenSharing = false;
+                io.to(currentMeeting).emit('screen-share-stopped', { userId });
             }
         }
     });
 
-    // Send chat message
     socket.on('send-message', ({ text }) => {
-        if (currentMeeting && meetings[currentMeeting]) {
-            const meeting = meetings[currentMeeting];
+        if (currentMeeting && activeMeetings[currentMeeting]) {
+            const active = activeMeetings[currentMeeting];
             const message = {
-                id: uuidv4(),
+                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 userId,
                 userName,
                 text,
                 timestamp: new Date().toISOString()
             };
-            meeting.messages.push(message);
-            saveData(MEETINGS_FILE, meetings);
+            active.messages.push(message);
             io.to(currentMeeting).emit('new-message', message);
         }
     });
 
-    // Disconnect
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
         console.log('User disconnected:', socket.id);
-        if (currentMeeting && meetings[currentMeeting]) {
-            const meeting = meetings[currentMeeting];
-            // Remove participant
-            delete meeting.participants[userId];
-            // If screen sharer left, clear screen share
-            if (meeting.screenSharer === userId) {
-                meeting.screenSharer = null;
+        if (currentMeeting && activeMeetings[currentMeeting]) {
+            const active = activeMeetings[currentMeeting];
+            delete active.participants[userId];
+            if (active.screenSharer === userId) {
+                active.screenSharer = null;
                 io.to(currentMeeting).emit('screen-share-stopped', { userId });
             }
-            saveData(MEETINGS_FILE, meetings);
-            // Notify others
-            socket.to(currentMeeting).emit('user-left', {
-                userId,
-                name: userName
-            });
-            // Clean up empty meetings
-            if (Object.keys(meeting.participants).length === 0) {
-                delete meetings[currentMeeting];
-                saveData(MEETINGS_FILE, meetings);
+            socket.to(currentMeeting).emit('user-left', { userId, name: userName });
+            if (Object.keys(active.participants).length === 0) {
+                delete activeMeetings[currentMeeting];
+                try {
+                    const record = await findMeetingRecord(currentMeeting);
+                    if (record) {
+                        await pb.collection('meetings').update(record.id, {
+                            status: 'ended',
+                            ended_at: new Date().toISOString()
+                        });
+                        console.log(`Meeting ${currentMeeting} ended`);
+                    }
+                } catch (e) {
+                    console.error('Error ending meeting:', e);
+                }
             }
         }
     });
 });
 
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+const PORT = parseInt(process.env.PORT, 10) || 3001;
+
+initPocketBase().then(() => {
+    server.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}).catch((err) => {
+    console.error('Failed to initialize PocketBase:', err);
+    process.exit(1);
 });
+
+// Graceful shutdown
+const shutdown = () => {
+    console.log('Shutting down gracefully...');
+    server.close(() => {
+        console.log('HTTP server closed');
+        process.exit(0);
+    });
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
