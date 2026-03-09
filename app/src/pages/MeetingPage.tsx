@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useSocket } from '@/hooks/useSocket';
 import { useWebRTC } from '@/hooks/useWebRTC';
@@ -25,16 +25,20 @@ export function MeetingPage() {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [isJoined, setIsJoined] = useState(false);
 
+  // Refs to avoid stale closures in callbacks
+  const currentUserIdRef = useRef<string>('');
+  const webRTCRef = useRef<typeof webRTC>(null!);
+
   // Handle user joined
   const handleUserJoined = useCallback((userId: string, name: string, participant: Participant) => {
     setParticipants(prev => ({ ...prev, [userId]: participant }));
     toast.info(`${name} joined the meeting`);
 
-    // Create offer for new user
-    if (userId !== currentUserId) {
-      webRTC.createOffer(userId);
+    // Create offer for new user - use ref to avoid stale closure
+    if (userId !== currentUserIdRef.current && currentUserIdRef.current) {
+      webRTCRef.current?.createOffer(userId);
     }
-  }, [currentUserId]);
+  }, []);
 
   // Handle user left
   const handleUserLeft = useCallback((userId: string, name: string) => {
@@ -43,23 +47,23 @@ export function MeetingPage() {
       delete newParticipants[userId];
       return newParticipants;
     });
-    webRTC.removePeer(userId);
+    webRTCRef.current?.removePeer(userId);
     toast.info(`${name} left the meeting`);
   }, []);
 
   // Handle offer
   const handleOffer = useCallback((senderId: string, _senderName: string, offer: RTCSessionDescriptionInit) => {
-    webRTC.handleOffer(senderId, offer);
+    webRTCRef.current?.handleOffer(senderId, offer);
   }, []);
 
   // Handle answer
   const handleAnswer = useCallback((senderId: string, answer: RTCSessionDescriptionInit) => {
-    webRTC.handleAnswer(senderId, answer);
+    webRTCRef.current?.handleAnswer(senderId, answer);
   }, []);
 
   // Handle ICE candidate
   const handleIceCandidate = useCallback((senderId: string, candidate: RTCIceCandidateInit) => {
-    webRTC.handleIceCandidate(senderId, candidate);
+    webRTCRef.current?.handleIceCandidate(senderId, candidate);
   }, []);
 
   // Handle media state changed
@@ -113,6 +117,15 @@ export function MeetingPage() {
     onIceCandidate: socket.sendIceCandidate
   });
 
+  // Keep ref in sync
+  useEffect(() => {
+    webRTCRef.current = webRTC;
+  });
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
+
   // Join meeting on mount
   useEffect(() => {
     if (!passcode || !userName) {
@@ -127,14 +140,15 @@ export function MeetingPage() {
         setMeetingName(meetingInfo.meeting.meetingName);
       }
 
-      // Initialize media first
+      // Initialize media first - starts with cam and mic ON
       await webRTC.initializeMedia(true, true);
 
-      // Join via socket
-      const response = await socket.joinMeeting(meetingId!, passcode, userName, webRTC.isMicOn, webRTC.isCamOn);
+      // After initializeMedia, mic and cam are BOTH on (true, true)
+      const response = await socket.joinMeeting(meetingId!, passcode, userName, true, true);
 
       if (response.success && response.userId) {
         setCurrentUserId(response.userId);
+        currentUserIdRef.current = response.userId;
         setParticipants(response.participants || {});
         setMessages(response.messages || []);
         setScreenSharer(response.screenSharer || null);
