@@ -37,10 +37,14 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
         audio: audio
       });
 
+      // Start with all tracks DISABLED - user must manually enable
+      stream.getAudioTracks().forEach(t => t.enabled = false);
+      stream.getVideoTracks().forEach(t => t.enabled = false);
+
       localStreamRef.current = stream;
       setLocalStream(stream);
-      setIsMicOn(audio);
-      setIsCamOn(video);
+      setIsMicOn(false);
+      setIsCamOn(false);
 
       return stream;
     } catch (error) {
@@ -145,10 +149,10 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   const createPeerConnection = useCallback((peerId: string): RTCPeerConnection => {
     const peer = new RTCPeerConnection(ICE_SERVERS);
 
-    // Add local stream tracks
+    // Add local stream tracks - DO NOT modify track.enabled here!
+    // Track enabled state is managed by toggleMic/toggleCam only.
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => {
-        track.enabled = isMicOn;
         peer.addTrack(track, localStreamRef.current!);
       });
 
@@ -158,7 +162,6 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
         : localStreamRef.current.getVideoTracks()[0];
 
       if (videoTrack) {
-        videoTrack.enabled = isCamOn || isScreenSharing;
         peer.addTrack(videoTrack, localStreamRef.current!);
       }
     }

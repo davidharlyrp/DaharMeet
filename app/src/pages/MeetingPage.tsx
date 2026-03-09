@@ -140,11 +140,11 @@ export function MeetingPage() {
         setMeetingName(meetingInfo.meeting.meetingName);
       }
 
-      // Initialize media first - starts with cam and mic ON
+      // Initialize media first - acquires stream but starts with tracks DISABLED
       await webRTC.initializeMedia(true, true);
 
-      // After initializeMedia, mic and cam are BOTH on (true, true)
-      const response = await socket.joinMeeting(meetingId!, passcode, userName, true, true);
+      // Join with mic/cam OFF (tracks are disabled)
+      const response = await socket.joinMeeting(meetingId!, passcode, userName, false, false);
 
       if (response.success && response.userId) {
         setCurrentUserId(response.userId);

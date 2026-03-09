@@ -30,7 +30,9 @@ export function VideoTile({
     if (audioRef.current && stream && !isLocal) {
       audioRef.current.srcObject = stream;
     }
-  }, [stream, isLocal]);
+  }, [stream, isLocal, isCamOn, isScreenShare]);
+
+  const showVideo = (isCamOn || isScreenShare) && stream;
 
   return (
     <div className={`relative bg-neutral-900 overflow-hidden ${className}`}>
@@ -39,15 +41,17 @@ export function VideoTile({
         <audio ref={audioRef} autoPlay playsInline />
       )}
 
-      {((isCamOn || isScreenShare) && stream) ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={true} // Mute video, let audio tag handle sound for remotes. Local is always muted.
-          className={`w-full h-full object-contain ${isLocal && !isScreenShare ? '-scale-x-100' : ''}`}
-        />
-      ) : (
+      {/* Always keep video element mounted to preserve srcObject */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={true}
+        className={`w-full h-full object-contain ${isLocal && !isScreenShare ? '-scale-x-100' : ''}`}
+        style={{ display: showVideo ? 'block' : 'none' }}
+      />
+
+      {!showVideo && (
         <div className="w-full h-full flex items-center justify-center bg-neutral-800">
           <div className="w-16 h-16 rounded-full bg-neutral-700 flex items-center justify-center">
             <span className="text-xl font-medium text-neutral-400">
