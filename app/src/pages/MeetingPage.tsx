@@ -131,7 +131,7 @@ export function MeetingPage() {
       await webRTC.initializeMedia(true, true);
 
       // Join via socket
-      const response = await socket.joinMeeting(meetingId!, passcode, userName);
+      const response = await socket.joinMeeting(meetingId!, passcode, userName, webRTC.isMicOn, webRTC.isCamOn);
 
       if (response.success && response.userId) {
         setCurrentUserId(response.userId);
@@ -139,15 +139,6 @@ export function MeetingPage() {
         setMessages(response.messages || []);
         setScreenSharer(response.screenSharer || null);
         setIsJoined(true);
-
-        // Create offers for existing participants
-        if (response.participants) {
-          Object.keys(response.participants).forEach(peerId => {
-            if (peerId !== response.userId) {
-              webRTC.createOffer(peerId);
-            }
-          });
-        }
 
         toast.success('Joined meeting successfully');
       } else {
@@ -319,7 +310,7 @@ export function MeetingPage() {
             <div className="flex-1 bg-neutral-950 p-4 grid gap-4 auto-rows-fr"
               style={{
                 gridTemplateColumns: `repeat(auto-fit, minmax(${Object.keys(participants).length <= 1 ? '400px' :
-                    Object.keys(participants).length <= 4 ? '300px' : '200px'
+                  Object.keys(participants).length <= 4 ? '300px' : '200px'
                   }, 1fr))`
               }}>
               <VideoTile

@@ -169,7 +169,7 @@ io.on('connection', (socket) => {
     let userId = socket.id;
     let userName = null;
 
-    socket.on('join-meeting', async ({ meetingId, passcode, name }, callback) => {
+    socket.on('join-meeting', async ({ meetingId, passcode, name, isMicOn, isCamOn }, callback) => {
         const record = await findMeetingRecord(meetingId);
         if (!record) return callback({ success: false, error: 'Meeting not found' });
         if (record.passcode !== passcode) return callback({ success: false, error: 'Invalid passcode' });
@@ -193,8 +193,8 @@ io.on('connection', (socket) => {
             id: userId,
             name: userName,
             socketId: socket.id,
-            isMicOn: false,
-            isCamOn: false,
+            isMicOn: !!isMicOn,
+            isCamOn: !!isCamOn,
             isScreenSharing: false
         };
 

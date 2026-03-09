@@ -100,9 +100,9 @@ export function useSocket({
     };
   }, []); // Only connect once on mount
 
-  const joinMeeting = useCallback((meetingId: string, passcode: string, name: string): Promise<JoinMeetingResponse> => {
+  const joinMeeting = useCallback((meetingId: string, passcode: string, name: string, isMicOn: boolean, isCamOn: boolean): Promise<JoinMeetingResponse> => {
     return new Promise((resolve) => {
-      socketRef.current?.emit('join-meeting', { meetingId, passcode, name }, (response: JoinMeetingResponse) => {
+      socketRef.current?.emit('join-meeting', { meetingId, passcode, name, isMicOn, isCamOn }, (response: JoinMeetingResponse) => {
         resolve(response);
       });
     });

@@ -21,21 +21,30 @@ export function VideoTile({
   className = ''
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
     }
-  }, [stream]);
+    if (audioRef.current && stream && !isLocal) {
+      audioRef.current.srcObject = stream;
+    }
+  }, [stream, isLocal]);
 
   return (
     <div className={`relative bg-neutral-900 overflow-hidden ${className}`}>
+      {/* Play remote audio independently so sound continues if camera turns off */}
+      {!isLocal && stream && (
+        <audio ref={audioRef} autoPlay playsInline />
+      )}
+
       {((isCamOn || isScreenShare) && stream) ? (
         <video
           ref={videoRef}
           autoPlay
           playsInline
-          muted={isLocal}
+          muted={true} // Mute video, let audio tag handle sound for remotes. Local is always muted.
           className={`w-full h-full object-contain ${isLocal && !isScreenShare ? '-scale-x-100' : ''}`}
         />
       ) : (

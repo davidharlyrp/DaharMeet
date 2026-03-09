@@ -53,27 +53,31 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   const toggleMic = useCallback(() => {
     if (localStreamRef.current) {
       const audioTracks = localStreamRef.current.getAudioTracks();
+      let nextState = false;
       audioTracks.forEach(track => {
         track.enabled = !track.enabled;
+        nextState = track.enabled;
       });
-      setIsMicOn(prev => !prev);
-      return !isMicOn;
+      setIsMicOn(nextState);
+      return nextState;
     }
     return false;
-  }, [isMicOn]);
+  }, []);
 
   // Toggle camera
   const toggleCam = useCallback(() => {
     if (localStreamRef.current) {
       const videoTracks = localStreamRef.current.getVideoTracks();
+      let nextState = false;
       videoTracks.forEach(track => {
         track.enabled = !track.enabled;
+        nextState = track.enabled;
       });
-      setIsCamOn(prev => !prev);
-      return !isCamOn;
+      setIsCamOn(nextState);
+      return nextState;
     }
     return false;
-  }, [isCamOn]);
+  }, []);
 
   // Start screen sharing
   const startScreenShare = useCallback(async (): Promise<MediaStream | null> => {
@@ -144,6 +148,7 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
     // Add local stream tracks
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = isMicOn;
         peer.addTrack(track, localStreamRef.current!);
       });
 
@@ -153,6 +158,7 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
         : localStreamRef.current.getVideoTracks()[0];
 
       if (videoTrack) {
+        videoTrack.enabled = isCamOn || isScreenSharing;
         peer.addTrack(videoTrack, localStreamRef.current!);
       }
     }
@@ -166,7 +172,8 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
 
     // Handle remote stream
     peer.ontrack = (event) => {
-      const [remoteStream] = event.streams;
+      const remoteStream = event.streams[0] || new MediaStream([event.track]);
+
       setRemoteStreams(prev => {
         const newMap = new Map(prev);
         newMap.set(peerId, remoteStream);
