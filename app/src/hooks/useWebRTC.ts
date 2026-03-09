@@ -4,6 +4,10 @@ const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.services.mozilla.com' },
   ]
 };
 
@@ -20,7 +24,7 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   const [isMicOn, setIsMicOn] = useState(false);
   const [isCamOn, setIsCamOn] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  
+
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -32,12 +36,12 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
         video: video ? { width: 1280, height: 720 } : false,
         audio: audio
       });
-      
+
       localStreamRef.current = stream;
       setLocalStream(stream);
       setIsMicOn(audio);
       setIsCamOn(video);
-      
+
       return stream;
     } catch (error) {
       console.error('Error accessing media devices:', error);
@@ -78,14 +82,14 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
         video: true,
         audio: true
       });
-      
+
       screenStreamRef.current = stream;
       setScreenStream(stream);
       setIsScreenSharing(true);
-      
+
       // Replace track in all peer connections
       peersRef.current.forEach((peer) => {
-        const sender = peer.getSenders().find(s => 
+        const sender = peer.getSenders().find(s =>
           s.track && s.track.kind === 'video'
         );
         if (sender) {
@@ -95,12 +99,12 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
           }
         }
       });
-      
+
       // Handle screen share stop
       stream.getVideoTracks()[0].onended = () => {
         stopScreenShare();
       };
-      
+
       return stream;
     } catch (error) {
       console.error('Error starting screen share:', error);
@@ -115,11 +119,11 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
       screenStreamRef.current = null;
       setScreenStream(null);
       setIsScreenSharing(false);
-      
+
       // Restore camera track in all peer connections
       if (localStreamRef.current) {
         peersRef.current.forEach((peer) => {
-          const sender = peer.getSenders().find(s => 
+          const sender = peer.getSenders().find(s =>
             s.track && s.track.kind === 'video'
           );
           if (sender) {
@@ -136,21 +140,30 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   // Create peer connection
   const createPeerConnection = useCallback((peerId: string): RTCPeerConnection => {
     const peer = new RTCPeerConnection(ICE_SERVERS);
-    
+
     // Add local stream tracks
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
+      localStreamRef.current.getAudioTracks().forEach(track => {
         peer.addTrack(track, localStreamRef.current!);
       });
+
+      // Use screen share track if currently sharing, otherwise use camera
+      const videoTrack = screenStreamRef.current
+        ? screenStreamRef.current.getVideoTracks()[0]
+        : localStreamRef.current.getVideoTracks()[0];
+
+      if (videoTrack) {
+        peer.addTrack(videoTrack, localStreamRef.current!);
+      }
     }
-    
+
     // Handle ICE candidates
     peer.onicecandidate = (event) => {
       if (event.candidate) {
         onIceCandidate(peerId, event.candidate);
       }
     };
-    
+
     // Handle remote stream
     peer.ontrack = (event) => {
       const [remoteStream] = event.streams;
@@ -160,7 +173,7 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
         return newMap;
       });
     };
-    
+
     peersRef.current.set(peerId, peer);
     return peer;
   }, [onIceCandidate]);
@@ -168,7 +181,7 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   // Create offer
   const createOffer = useCallback(async (peerId: string) => {
     const peer = createPeerConnection(peerId);
-    
+
     try {
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
@@ -181,11 +194,11 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   // Handle offer
   const handleOffer = useCallback(async (peerId: string, offer: RTCSessionDescriptionInit) => {
     let peer = peersRef.current.get(peerId);
-    
+
     if (!peer) {
       peer = createPeerConnection(peerId);
     }
-    
+
     try {
       await peer.setRemoteDescription(offer);
       const answer = await peer.createAnswer();
@@ -199,7 +212,7 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   // Handle answer
   const handleAnswer = useCallback(async (peerId: string, answer: RTCSessionDescriptionInit) => {
     const peer = peersRef.current.get(peerId);
-    
+
     if (peer) {
       try {
         await peer.setRemoteDescription(answer);
@@ -212,7 +225,7 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   // Handle ICE candidate
   const handleIceCandidate = useCallback(async (peerId: string, candidate: RTCIceCandidateInit) => {
     const peer = peersRef.current.get(peerId);
-    
+
     if (peer) {
       try {
         await peer.addIceCandidate(candidate);
@@ -225,12 +238,12 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   // Remove peer
   const removePeer = useCallback((peerId: string) => {
     const peer = peersRef.current.get(peerId);
-    
+
     if (peer) {
       peer.close();
       peersRef.current.delete(peerId);
     }
-    
+
     setRemoteStreams(prev => {
       const newMap = new Map(prev);
       newMap.delete(peerId);
@@ -242,17 +255,17 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   const cleanup = useCallback(() => {
     peersRef.current.forEach(peer => peer.close());
     peersRef.current.clear();
-    
+
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
       localStreamRef.current = null;
     }
-    
+
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach(track => track.stop());
       screenStreamRef.current = null;
     }
-    
+
     setLocalStream(null);
     setScreenStream(null);
     setRemoteStreams(new Map());

@@ -30,18 +30,18 @@ export function VideoTile({
 
   return (
     <div className={`relative bg-neutral-900 overflow-hidden ${className}`}>
-      {isCamOn && stream ? (
+      {((isCamOn || isScreenShare) && stream) ? (
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted={isLocal}
-          className="w-full h-full object-cover -scale-x-100"
+          className={`w-full h-full object-contain ${isLocal && !isScreenShare ? '-scale-x-100' : ''}`}
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-neutral-800">
-          <div className="w-20 h-20 rounded-full bg-neutral-700 flex items-center justify-center">
-            <span className="text-2xl font-medium text-neutral-400">
+          <div className="w-16 h-16 rounded-full bg-neutral-700 flex items-center justify-center">
+            <span className="text-xl font-medium text-neutral-400">
               {userName.charAt(0).toUpperCase()}
             </span>
           </div>

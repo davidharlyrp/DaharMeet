@@ -271,61 +271,83 @@ export function MeetingPage() {
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Video Area */}
-        <div className="flex-1 flex">
-          {/* Screen Share / Main Video */}
-          <div className={`${isAnyoneScreenSharing ? 'flex-[2]' : 'flex-1'} bg-neutral-900 p-4`}>
-            {isAnyoneScreenSharing && screenShareStream ? (
-              <VideoTile
-                stream={screenShareStream}
-                userName={screenSharer === currentUserId ? 'Your Screen' : participants[screenSharer!]?.name + "'s Screen"}
-                isMicOn={false}
-                isCamOn={true}
-                isScreenShare={true}
-                className="w-full h-full"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-neutral-800">
-                <div className="text-center space-y-4">
-                  <div className="w-24 h-24 bg-neutral-700 flex items-center justify-center mx-auto">
-                    <span className="text-4xl font-medium text-neutral-400">
-                      {userName.charAt(0).toUpperCase()}
-                    </span>
+        <div className="flex-1 flex overflow-hidden">
+          {isAnyoneScreenSharing ? (
+            /* Theater Mode: Screen Share Main, Others Sidebar */
+            <div className="flex-1 flex overflow-hidden">
+              <div className="flex-1 bg-neutral-900 p-2 overflow-hidden">
+                {screenShareStream ? (
+                  <VideoTile
+                    stream={screenShareStream}
+                    userName={screenSharer === currentUserId ? 'Your Screen' : (participants[screenSharer!]?.name || 'User') + "'s Screen"}
+                    isMicOn={false}
+                    isCamOn={true}
+                    isScreenShare={true}
+                    className="w-full h-full"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-neutral-800">
+                    <p className="text-white">Connecting to screen share...</p>
                   </div>
-                  <p className="text-white text-lg">{userName} (You)</p>
-                  <p className="text-neutral-400 text-sm">Waiting for others to join...</p>
-                </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Video Grid */}
-          <div className="w-80 bg-neutral-900 border-l border-neutral-800 p-4 overflow-y-auto">
-            {/* Local video */}
-            <div className="mb-4">
+              {/* Sidebar in Theater Mode */}
+              <div className="w-64 bg-neutral-950 border-l border-neutral-800 p-2 overflow-y-auto space-y-2">
+                <VideoTile
+                  stream={webRTC.localStream}
+                  userName={userName}
+                  isMicOn={webRTC.isMicOn}
+                  isCamOn={webRTC.isCamOn}
+                  isLocal={true}
+                  className="w-full aspect-video"
+                />
+                {videoStreams.map(([peerId, stream]) => (
+                  <VideoTile
+                    key={peerId}
+                    stream={stream}
+                    userName={participants[peerId]?.name || 'Unknown'}
+                    isMicOn={participants[peerId]?.isMicOn || false}
+                    isCamOn={participants[peerId]?.isCamOn || false}
+                    className="w-full aspect-video"
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* Grid Mode: All Participants in a responsive grid */
+            <div className="flex-1 bg-neutral-950 p-4 grid gap-4 auto-rows-fr"
+              style={{
+                gridTemplateColumns: `repeat(auto-fit, minmax(${Object.keys(participants).length <= 1 ? '400px' :
+                    Object.keys(participants).length <= 4 ? '300px' : '200px'
+                  }, 1fr))`
+              }}>
               <VideoTile
                 stream={webRTC.localStream}
                 userName={userName}
                 isMicOn={webRTC.isMicOn}
                 isCamOn={webRTC.isCamOn}
                 isLocal={true}
-                className="w-full aspect-video"
+                className="w-full h-full"
               />
-            </div>
-
-            {/* Remote videos */}
-            <div className="space-y-4">
-              {videoStreams.map(([peerId, stream]) => (
+              {Array.from(webRTC.remoteStreams.entries()).map(([peerId, stream]) => (
                 <VideoTile
                   key={peerId}
                   stream={stream}
                   userName={participants[peerId]?.name || 'Unknown'}
                   isMicOn={participants[peerId]?.isMicOn || false}
                   isCamOn={participants[peerId]?.isCamOn || false}
-                  className="w-full aspect-video"
+                  className="w-full h-full"
                 />
               ))}
+
+              {Object.keys(participants).length === 0 && (
+                <div className="col-span-full flex items-center justify-center">
+                  <p className="text-neutral-500 text-sm">Waiting for others to join...</p>
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
 
         {/* Side Panels */}
