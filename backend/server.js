@@ -41,9 +41,11 @@ const loadData = (file) => {
 
 const saveData = (file, data) => {
     try {
-        fs.writeFileSync(file, JSON.stringify(data, null, 2));
+        const content = JSON.stringify(data, null, 2);
+        fs.writeFileSync(file, content);
+        console.log(`Data successfully saved to ${file}. Entries: ${Object.keys(data).length}`);
     } catch (e) {
-        console.error('Error saving data:', e);
+        console.error(`Error saving data to ${file}:`, e);
     }
 };
 
@@ -80,6 +82,7 @@ app.post('/api/meetings', (req, res) => {
     };
 
     meetings[meetingId] = meeting;
+    console.log(`New meeting created: ${meetingId}. Total meetings in memory: ${Object.keys(meetings).length}`);
     saveData(MEETINGS_FILE, meetings);
 
     res.json({
