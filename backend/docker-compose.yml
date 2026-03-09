@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: daharmeet-backend
+    image: daharmeet-backend:latest
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/app/data
+    restart: always
+    environment:
+      - PORT=3001
