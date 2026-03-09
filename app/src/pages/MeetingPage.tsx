@@ -446,7 +446,7 @@ export function MeetingPage() {
     <div className="h-screen bg-neutral-950 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="h-12 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-4">
-        <div className="grid grid-cols-2 items-center gap-x-2 text-[10px] md:text-sm w-48">
+        <div className="grid grid-cols-2 items-center gap-x-2 text-[10px] md:text-sm w-52">
           <span className="text-white font-medium">Meeting ID</span>
           <span className="text-white font-medium">: {meetingId}</span>
           <span className="text-white font-medium">Passkey</span>
