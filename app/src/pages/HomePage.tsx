@@ -66,7 +66,7 @@ export function HomePage() {
     }
 
     if (!passcode.trim() || passcode.length !== 6) {
-      setError('Please enter a valid 6-digit passcode');
+      setError('Please enter a valid 6-digit passkey');
       return;
     }
 
@@ -80,7 +80,7 @@ export function HomePage() {
         state: { passcode, userName }
       });
     } else {
-      setError(response.error || 'Invalid passcode');
+      setError(response.error || 'Invalid passkey');
     }
 
     setLoading(false);
@@ -181,7 +181,7 @@ export function HomePage() {
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Lock className="w-4 h-4" />
-              Enter Meeting Passcode
+              Enter Meeting Passkey
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
@@ -194,7 +194,7 @@ export function HomePage() {
             <Input
               value={passcode}
               onChange={(e) => setPasscode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="6-digit passcode"
+              placeholder="6-digit passkey"
               type="password"
               className="bg-neutral-800 border-neutral-700 rounded-none text-white placeholder:text-neutral-500"
             />
@@ -236,7 +236,7 @@ export function HomePage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm text-neutral-400">Passcode</label>
+                  <label className="text-sm text-neutral-400">Passkey</label>
                   <div className="flex items-center gap-2 mt-1">
                     <code className="flex-1 bg-neutral-800 px-3 py-2 text-white font-mono">
                       {createdMeeting.passcode}

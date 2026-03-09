@@ -1,3 +1,9 @@
+export interface CameraSettings {
+  flipH: boolean;
+  flipV: boolean;
+  rotation: number;
+}
+
 export interface Participant {
   id: string;
   name: string;
@@ -5,6 +11,7 @@ export interface Participant {
   isMicOn: boolean;
   isCamOn: boolean;
   isScreenSharing: boolean;
+  cameraSettings?: CameraSettings;
 }
 
 export interface Message {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import type { Participant, Message, JoinMeetingResponse } from '@/types';
+import type { Participant, Message, JoinMeetingResponse, CameraSettings } from '@/types';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -14,6 +14,7 @@ interface UseSocketProps {
   onScreenShareStarted?: (userId: string, userName: string) => void;
   onScreenShareStopped?: (userId: string) => void;
   onNewMessage?: (message: Message) => void;
+  onParticipantCameraSettingsChanged?: (userId: string, settings: CameraSettings) => void;
 }
 
 export function useSocket({
@@ -25,7 +26,8 @@ export function useSocket({
   onMediaStateChanged,
   onScreenShareStarted,
   onScreenShareStopped,
-  onNewMessage
+  onNewMessage,
+  onParticipantCameraSettingsChanged
 }: UseSocketProps = {}) {
   const socketRef = useRef<Socket | null>(null);
   const callbacksRef = useRef<UseSocketProps>({});
@@ -41,7 +43,8 @@ export function useSocket({
       onMediaStateChanged,
       onScreenShareStarted,
       onScreenShareStopped,
-      onNewMessage
+      onNewMessage,
+      onParticipantCameraSettingsChanged
     };
   }, [
     onUserJoined,
@@ -52,7 +55,8 @@ export function useSocket({
     onMediaStateChanged,
     onScreenShareStarted,
     onScreenShareStopped,
-    onNewMessage
+    onNewMessage,
+    onParticipantCameraSettingsChanged
   ]);
 
   useEffect(() => {
@@ -93,6 +97,10 @@ export function useSocket({
 
     socket.on('new-message', (message) => {
       callbacksRef.current?.onNewMessage?.(message);
+    });
+
+    socket.on('participant-camera-settings-changed', ({ userId, settings }) => {
+      callbacksRef.current?.onParticipantCameraSettingsChanged?.(userId, settings);
     });
 
     return () => {
@@ -140,6 +148,10 @@ export function useSocket({
     socketRef.current?.emit('send-message', { text });
   }, []);
 
+  const updateCameraSettings = useCallback((settings: CameraSettings) => {
+    socketRef.current?.emit('update-camera-settings', settings);
+  }, []);
+
   return {
     socket: socketRef.current,
     joinMeeting,
@@ -149,6 +161,7 @@ export function useSocket({
     updateMediaState,
     requestScreenShare,
     stopScreenShare,
-    sendMessage
+    sendMessage,
+    updateCameraSettings
   };
 }

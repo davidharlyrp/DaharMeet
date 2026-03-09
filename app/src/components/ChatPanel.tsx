@@ -37,20 +37,20 @@ export function ChatPanel({ messages, currentUserId, onSendMessage }: ChatPanelP
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: false 
+      hour12: false
     });
   };
 
   return (
-    <div className="w-80 bg-neutral-900 border-l border-neutral-800 flex flex-col">
+    <div className="absolute md:relative bottom-0 right-0 z-20 w-full md:w-80 h-[60vh] md:h-full bg-neutral-900 border-t md:border-t-0 md:border-l border-neutral-800 flex flex-col shadow-2xl md:shadow-none">
       <div className="h-12 border-b border-neutral-800 flex items-center px-4">
         <h3 className="font-medium text-white">Chat</h3>
       </div>
-      
-      <ScrollArea ref={scrollRef} className="flex-1 p-4">
+
+      <ScrollArea ref={scrollRef} className="flex-1 min-h-0 p-4">
         <div className="space-y-3">
           {messages.length === 0 ? (
             <p className="text-neutral-500 text-sm text-center py-8">
@@ -59,7 +59,7 @@ export function ChatPanel({ messages, currentUserId, onSendMessage }: ChatPanelP
           ) : (
             messages.map((message) => {
               const isOwn = message.userId === currentUserId;
-              
+
               return (
                 <div key={message.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
                   <div className={`max-w-[85%] ${isOwn ? 'bg-blue-600' : 'bg-neutral-800'} px-3 py-2`}>
@@ -79,7 +79,7 @@ export function ChatPanel({ messages, currentUserId, onSendMessage }: ChatPanelP
           )}
         </div>
       </ScrollArea>
-      
+
       <div className="p-3 border-t border-neutral-800">
         <div className="flex gap-2">
           <Input

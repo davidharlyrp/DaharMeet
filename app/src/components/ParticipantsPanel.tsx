@@ -10,19 +10,19 @@ interface ParticipantsPanelProps {
 
 export function ParticipantsPanel({ participants, currentUserId, screenSharer }: ParticipantsPanelProps) {
   const participantList = Object.values(participants);
-  
+
   return (
-    <div className="w-72 bg-neutral-900 border-l border-neutral-800 flex flex-col">
+    <div className="absolute md:relative bottom-0 right-0 z-20 w-full md:w-80 h-[60vh] md:h-full bg-neutral-900 border-t md:border-t-0 md:border-l border-neutral-800 flex flex-col shadow-2xl md:shadow-none">
       <div className="h-12 border-b border-neutral-800 flex items-center px-4">
         <h3 className="font-medium text-white">Participants ({participantList.length})</h3>
       </div>
-      
-      <ScrollArea className="flex-1">
+
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-2">
           {participantList.map((participant) => {
             const isCurrentUser = participant.id === currentUserId;
             const isScreenSharing = participant.id === screenSharer;
-            
+
             return (
               <div
                 key={participant.id}
@@ -46,7 +46,7 @@ export function ParticipantsPanel({ participants, currentUserId, screenSharer }:
                     )}
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   {participant.isMicOn ? (
                     <Mic className="w-4 h-4 text-neutral-400" />

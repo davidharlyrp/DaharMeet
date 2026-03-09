@@ -2,7 +2,17 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
+
+// Configure multer for file uploads
+const uploadDir = path.join(__dirname, 'data', 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+const upload = multer({ dest: uploadDir, limits: { fileSize: 500 * 1024 * 1024 } }); // 500MB limit
 
 const app = express();
 const server = http.createServer(app);
@@ -51,6 +61,46 @@ const getActiveMeeting = (meetingId) => {
     }
     return activeMeetings[meetingId];
 };
+
+// POST /api/recordings - Upload a recording
+app.post('/api/recordings', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No file uploaded' });
+        }
+
+        const { meetingId, userName, duration } = req.body;
+        if (!meetingId || !userName) {
+            fs.unlinkSync(req.file.path);
+            return res.status(400).json({ success: false, error: 'meetingId and userName are required' });
+        }
+
+        // Read file and create a File-like object for PocketBase SDK
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const fileName = req.file.originalname || `recording-${meetingId}-${Date.now()}.webm`;
+
+        const record = await pb.collection('recordings').create({
+            meeting_id: meetingId,
+            user_name: userName,
+            duration: parseInt(duration) || 0,
+            status: 'completed',
+            recorded_at: new Date().toISOString(),
+            raw_file: new File([fileBuffer], fileName, { type: 'video/webm' }),
+        });
+
+        // Cleanup temp file
+        fs.unlinkSync(req.file.path);
+
+        console.log(`Recording saved for meeting ${meetingId} by ${userName}`);
+        res.json({ success: true, recordId: record.id });
+    } catch (e) {
+        console.error('Error uploading recording:', e);
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
+        res.status(500).json({ success: false, error: 'Failed to upload recording' });
+    }
+});
 
 const generateMeetingId = () => {
     return Math.floor(10000000 + Math.random() * 90000000).toString();
@@ -234,6 +284,16 @@ io.on('connection', (socket) => {
                 participant.isMicOn = isMicOn;
                 participant.isCamOn = isCamOn;
                 socket.to(currentMeeting).emit('media-state-changed', { userId, isMicOn, isCamOn });
+            }
+        }
+    });
+
+    socket.on('update-camera-settings', (settings) => {
+        if (currentMeeting && activeMeetings[currentMeeting]) {
+            const participant = activeMeetings[currentMeeting].participants[userId];
+            if (participant) {
+                participant.cameraSettings = settings;
+                socket.to(currentMeeting).emit('participant-camera-settings-changed', { userId, settings });
             }
         }
     });

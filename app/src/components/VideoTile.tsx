@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import type { CameraSettings } from '@/types';
 
 interface VideoTileProps {
   stream: MediaStream | null;
@@ -8,6 +9,7 @@ interface VideoTileProps {
   isCamOn: boolean;
   isLocal?: boolean;
   isScreenShare?: boolean;
+  cameraSettings?: CameraSettings;
   className?: string;
 }
 
@@ -18,6 +20,7 @@ export function VideoTile({
   isCamOn,
   isLocal = false,
   isScreenShare = false,
+  cameraSettings,
   className = ''
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -47,8 +50,11 @@ export function VideoTile({
         autoPlay
         playsInline
         muted={true}
-        className={`w-full h-full object-contain ${isLocal && !isScreenShare ? '-scale-x-100' : ''}`}
-        style={{ display: showVideo ? 'block' : 'none' }}
+        className={`w-full h-full object-contain ${!cameraSettings && isLocal && !isScreenShare ? '-scale-x-100' : ''}`}
+        style={{
+          display: showVideo ? 'block' : 'none',
+          transform: cameraSettings ? `rotate(${cameraSettings.rotation}deg) scaleX(${cameraSettings.flipH ? -1 : 1}) scaleY(${cameraSettings.flipV ? -1 : 1})` : undefined
+        }}
       />
 
       {!showVideo && (

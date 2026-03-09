@@ -2,26 +2,51 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useSocket } from '@/hooks/useSocket';
 import { useWebRTC } from '@/hooks/useWebRTC';
+import { useRecording } from '@/hooks/useRecording';
 import { VideoTile } from '@/components/VideoTile';
 import { MeetingControls } from '@/components/MeetingControls';
 import { ChatPanel } from '@/components/ChatPanel';
 import { ParticipantsPanel } from '@/components/ParticipantsPanel';
-import { getMeeting } from '@/lib/api';
-import type { Participant, Message } from '@/types';
+import { CameraSettingsModal } from '@/components/CameraSettingsModal';
+import { getMeeting, validatePasscode } from '@/lib/api';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import type { Participant, Message, CameraSettings } from '@/types';
 import { toast } from 'sonner';
+import { ArrowRight, Copy, Eye, EyeOff, Users } from 'lucide-react';
 
 export function MeetingPage() {
   const { meetingId } = useParams<{ meetingId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const { passcode, userName } = location.state || {};
+
+  // Direct URL access: passcode/userName may come from state OR from inline form
+  const statePasscode = location.state?.passcode;
+  const stateUserName = location.state?.userName;
+
   const [meetingName, setMeetingName] = useState<string>('');
+  const [joinPasscode, setJoinPasscode] = useState('');
+  const [joinUserName, setJoinUserName] = useState('');
+  const [joinError, setJoinError] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
+  const [meetingExists, setMeetingExists] = useState<boolean | null>(null); // null = checking
+  const [needsAuth, setNeedsAuth] = useState(false);
+
+  // Final credentials used for the actual meeting join
+  const [passcode, setPasscode] = useState(statePasscode || '');
+  const [userName, setUserName] = useState(stateUserName || '');
 
   const [participants, setParticipants] = useState<Record<string, Participant>>({});
   const [messages, setMessages] = useState<Message[]>([]);
   const [screenSharer, setScreenSharer] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [cameraSettings, setCameraSettings] = useState<CameraSettings>({
+    flipH: false,
+    flipV: false,
+    rotation: 0
+  });
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [isJoined, setIsJoined] = useState(false);
 
@@ -83,6 +108,22 @@ export function MeetingPage() {
     });
   }, []);
 
+  // Handle participant camera settings changed
+  const handleParticipantCameraSettingsChanged = useCallback((userId: string, settings: CameraSettings) => {
+    setParticipants(prev => {
+      if (prev[userId]) {
+        return {
+          ...prev,
+          [userId]: {
+            ...prev[userId],
+            cameraSettings: settings
+          }
+        };
+      }
+      return prev;
+    });
+  }, []);
+
   // Handle screen share started
   const handleScreenShareStarted = useCallback((userId: string, userName: string) => {
     setScreenSharer(userId);
@@ -108,7 +149,8 @@ export function MeetingPage() {
     onMediaStateChanged: handleMediaStateChanged,
     onScreenShareStarted: handleScreenShareStarted,
     onScreenShareStopped: handleScreenShareStopped,
-    onNewMessage: handleNewMessage
+    onNewMessage: handleNewMessage,
+    onParticipantCameraSettingsChanged: handleParticipantCameraSettingsChanged
   });
 
   const webRTC = useWebRTC({
@@ -130,47 +172,93 @@ export function MeetingPage() {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
 
-  // Join meeting on mount
-  useEffect(() => {
-    if (!passcode || !userName) {
-      navigate('/');
-      return;
-    }
+  const recording = useRecording({
+    localStream: webRTC.localStream,
+    remoteStreams: webRTC.remoteStreams,
+    screenStream: webRTC.screenStream,
+    meetingId: meetingId || '',
+    userName,
+  });
 
-    const join = async () => {
-      // Fetch meeting info to get the name
-      const meetingInfo = await getMeeting(meetingId!);
-      if (meetingInfo.success && meetingInfo.meeting) {
-        setMeetingName(meetingInfo.meeting.meetingName);
+  // Initial check: if we have state auth, join immediately.
+  // Otherwise, check if meeting exists.
+  useEffect(() => {
+    const checkMeeting = async () => {
+      if (!meetingId) {
+        navigate('/');
+        return;
       }
 
-      // Initialize media first - acquires stream but starts with tracks DISABLED
-      await webRTC.initializeMedia(true, true);
-
-      // Join with mic/cam OFF (tracks are disabled)
-      const response = await socket.joinMeeting(meetingId!, passcode, userName, false, false);
-
-      if (response.success && response.userId) {
-        setCurrentUserId(response.userId);
-        currentUserIdRef.current = response.userId;
-        setParticipants(response.participants || {});
-        setMessages(response.messages || []);
-        setScreenSharer(response.screenSharer || null);
-        setIsJoined(true);
-
-        toast.success('Joined meeting successfully');
+      const response = await getMeeting(meetingId);
+      if (response.success && response.meeting) {
+        setMeetingName(response.meeting.meetingName);
+        setMeetingExists(true);
+        if (passcode && userName) {
+          // Have credentials from location.state → Join
+          joinMeetingClient(passcode, userName);
+        } else {
+          // Need credentials → Show form
+          setNeedsAuth(true);
+        }
       } else {
-        toast.error(response.error || 'Failed to join meeting');
-        navigate('/');
+        setMeetingExists(false);
       }
     };
 
-    join();
+    checkMeeting();
 
     return () => {
       webRTC.cleanup();
     };
-  }, []);
+  }, [meetingId]); // Run once on mount or meetingId change
+
+  const joinMeetingClient = async (currentPasscode: string, currentUserName: string) => {
+    // Initialize media first - acquires stream but starts with tracks DISABLED
+    await webRTC.initializeMedia(true, true);
+
+    // Join with mic/cam OFF (tracks are disabled)
+    const response = await socket.joinMeeting(meetingId!, currentPasscode, currentUserName, false, false);
+
+    if (response.success && response.userId) {
+      setCurrentUserId(response.userId);
+      currentUserIdRef.current = response.userId;
+      setParticipants(response.participants || {});
+      setMessages(response.messages || []);
+      setScreenSharer(response.screenSharer || null);
+      setNeedsAuth(false);
+      setIsJoined(true);
+
+      toast.success('Joined meeting successfully');
+    } else {
+      toast.error(response.error || 'Failed to join meeting');
+      if (!location.state) {
+        // If they came via direct link and failed, let them try again
+        setNeedsAuth(true);
+      } else {
+        // Came from home page and failed, go back
+        navigate('/');
+      }
+    }
+  };
+
+  const handleJoinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinUserName.trim() || joinPasscode.length !== 6) return;
+
+    setJoinLoading(true);
+    setJoinError('');
+
+    const response = await validatePasscode(meetingId!, joinPasscode);
+    if (response.success) {
+      setPasscode(joinPasscode);
+      setUserName(joinUserName);
+      await joinMeetingClient(joinPasscode, joinUserName);
+    } else {
+      setJoinError(response.error || 'Invalid passkey');
+    }
+    setJoinLoading(false);
+  };
+
 
   // Update media state to others
   useEffect(() => {
@@ -209,6 +297,21 @@ export function MeetingPage() {
     }
   };
 
+  // Handle toggle recording
+  const handleToggleRecording = () => {
+    if (recording.isRecording) {
+      recording.stopRecording();
+      toast.info('Recording stopped. Uploading...');
+    } else {
+      const success = recording.startRecording();
+      if (success) {
+        toast.success('Recording started');
+      } else {
+        toast.error('Failed to start recording');
+      }
+    }
+  };
+
   // Handle send message
   const handleSendMessage = (text: string) => {
     socket.sendMessage(text);
@@ -216,6 +319,9 @@ export function MeetingPage() {
 
   // Handle leave
   const handleLeave = () => {
+    if (recording.isRecording) {
+      recording.stopRecording();
+    }
     webRTC.cleanup();
     navigate('/');
   };
@@ -241,35 +347,130 @@ export function MeetingPage() {
     ([peerId]) => peerId !== screenSharer
   );
 
-  if (!isJoined) {
+  const [showPasskey, setShowPasskey] = useState(false);
+
+  const handleCopyPasskey = () => {
+    navigator.clipboard.writeText(passcode);
+    toast.success('Passkey copied to clipboard');
+  };
+  if (meetingExists === null) {
     return (
       <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="w-12 h-12 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-white">Joining meeting...</p>
+          <p className="text-white">Checking meeting...</p>
         </div>
       </div>
     );
   }
 
+  if (meetingExists === false) {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-4 text-center">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold text-white">Meeting Not Found</h1>
+            <p className="text-neutral-400">The meeting you are trying to join does not exist or has ended.</p>
+          </div>
+          <Button onClick={() => navigate('/')} className="w-full bg-white text-black hover:bg-neutral-200 rounded-none h-12 text-md font-medium">
+            Return to Home
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (needsAuth && !isJoined) {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-bold text-white">Join Meeting</h1>
+            <p className="text-neutral-400 font-mono">{meetingName}</p>
+          </div>
+
+          <form onSubmit={handleJoinSubmit} className="bg-neutral-900 border border-neutral-800 p-6 space-y-4">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Input
+                  value={joinUserName}
+                  onChange={(e) => setJoinUserName(e.target.value)}
+                  placeholder="Your Name"
+                  required
+                  className="bg-neutral-800 border-neutral-700 rounded-none text-white placeholder:text-neutral-500 h-11"
+                />
+              </div>
+              <div className="space-y-2">
+                <Input
+                  value={joinPasscode}
+                  onChange={(e) => setJoinPasscode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="6-digit Passkey"
+                  type="password"
+                  required
+                  className="bg-neutral-800 border-neutral-700 rounded-none text-white placeholder:text-neutral-500 h-11"
+                />
+              </div>
+            </div>
+
+            {joinError && (
+              <p className="text-red-400 text-sm text-center bg-red-400/10 p-2 border border-red-400/20">{joinError}</p>
+            )}
+
+            <Button
+              type="submit"
+              disabled={joinPasscode.length !== 6 || !joinUserName.trim() || joinLoading}
+              className="w-full bg-white text-black hover:bg-neutral-200 rounded-none h-11 font-medium"
+            >
+              {joinLoading ? 'Joining...' : 'Join Now'}
+              {!joinLoading && <ArrowRight className="w-4 h-4 ml-2" />}
+            </Button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isJoined) {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-white">Joining {meetingName || 'meeting'}...</p>
+        </div>
+      </div>
+    );
+  }
+
+
   return (
     <div className="h-screen bg-neutral-950 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="h-12 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-4">
-        <div className="flex items-center gap-2">
-          <span className="text-white font-medium">Meeting ID: {meetingId}</span>
-          <div className='h-6 w-0.5 bg-white' />
-          <span className="text-white font-medium">Passcode: {passcode}</span>
+        <div className="grid grid-cols-2 items-center gap-x-2 text-[10px] md:text-sm w-48">
+          <span className="text-white font-medium">Meeting ID</span>
+          <span className="text-white font-medium">: {meetingId}</span>
+          <span className="text-white font-medium">Passkey</span>
+          <span className="text-white font-medium flex items-center gap-2">: {showPasskey ? passcode : '••••••'}
+            <button onClick={() => setShowPasskey(!showPasskey)}>
+              {showPasskey ? <EyeOff className="w-3 h-3 cursor-pointer hover:text-white" /> : <Eye className="w-3 h-3 cursor-pointer hover:text-white" />}
+            </button>
+            {showPasskey && (
+              <button onClick={handleCopyPasskey}>
+                <Copy className="w-3 h-3 cursor-pointer hover:text-white" />
+              </button>
+            )}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 text-[10px] md:text-sm">
           <span className="text-white font-medium">{meetingName}</span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-neutral-400 text-sm">
-            {Object.keys(participants).length} participants
+          <span className="text-neutral-400 text-[10px] md:text-sm flex items-center gap-1">
+            <Users className="w-3 h-3 md:hidden" />
+            {Object.keys(participants).length} <span className="hidden md:block">participants</span>
           </span>
           {isAnyoneScreenSharing && (
-            <span className="text-green-400 text-sm flex items-center gap-1">
+            <span className="text-green-400 text-[10px] md:text-sm flex items-center gap-1">
               <span className="w-2 h-2 bg-green-400 rounded-full" />
               Screen sharing
             </span>
@@ -278,12 +479,12 @@ export function MeetingPage() {
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* Video Area */}
         <div className="flex-1 flex overflow-hidden">
           {isAnyoneScreenSharing ? (
             /* Theater Mode: Screen Share Main, Others Sidebar */
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex md:flex-row flex-col overflow-hidden">
               <div className="flex-1 bg-neutral-900 p-2 overflow-hidden">
                 {screenShareStream ? (
                   <VideoTile
@@ -309,6 +510,7 @@ export function MeetingPage() {
                   isMicOn={webRTC.isMicOn}
                   isCamOn={webRTC.isCamOn}
                   isLocal={true}
+                  cameraSettings={cameraSettings}
                   className="w-full aspect-video"
                 />
                 {videoStreams.map(([peerId, stream]) => (
@@ -318,6 +520,7 @@ export function MeetingPage() {
                     userName={participants[peerId]?.name || 'Unknown'}
                     isMicOn={participants[peerId]?.isMicOn || false}
                     isCamOn={participants[peerId]?.isCamOn || false}
+                    cameraSettings={participants[peerId]?.cameraSettings}
                     className="w-full aspect-video"
                   />
                 ))}
@@ -337,6 +540,7 @@ export function MeetingPage() {
                 isMicOn={webRTC.isMicOn}
                 isCamOn={webRTC.isCamOn}
                 isLocal={true}
+                cameraSettings={cameraSettings}
                 className="w-full h-full"
               />
               {Array.from(webRTC.remoteStreams.entries()).map(([peerId, stream]) => (
@@ -346,6 +550,7 @@ export function MeetingPage() {
                   userName={participants[peerId]?.name || 'Unknown'}
                   isMicOn={participants[peerId]?.isMicOn || false}
                   isCamOn={participants[peerId]?.isCamOn || false}
+                  cameraSettings={participants[peerId]?.cameraSettings}
                   className="w-full h-full"
                 />
               ))}
@@ -383,11 +588,16 @@ export function MeetingPage() {
         isCamOn={webRTC.isCamOn}
         isScreenSharing={webRTC.isScreenSharing}
         canShareScreen={canShareScreen}
+        isRecording={recording.isRecording}
+        recordingDuration={recording.recordingDuration}
+        isUploading={recording.isUploading}
         showChat={showChat}
         showParticipants={showParticipants}
         onToggleMic={handleToggleMic}
         onToggleCam={handleToggleCam}
         onToggleScreenShare={handleToggleScreenShare}
+        onToggleRecording={handleToggleRecording}
+        onToggleSettings={() => setShowSettingsModal(true)}
         onToggleChat={() => {
           setShowChat(!showChat);
           setShowParticipants(false);
@@ -397,6 +607,16 @@ export function MeetingPage() {
           setShowChat(false);
         }}
         onLeave={handleLeave}
+      />
+
+      <CameraSettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        settings={cameraSettings}
+        onChange={(newSettings) => {
+          setCameraSettings(newSettings);
+          socket.updateCameraSettings(newSettings);
+        }}
       />
     </div>
   );
