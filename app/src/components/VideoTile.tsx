@@ -36,7 +36,7 @@ export function VideoTile({
           autoPlay
           playsInline
           muted={isLocal}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover -scale-x-100"
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-neutral-800">
@@ -47,7 +47,7 @@ export function VideoTile({
           </div>
         </div>
       )}
-      
+
       {/* User info overlay */}
       <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent">
         <div className="flex items-center justify-between">
@@ -68,7 +68,7 @@ export function VideoTile({
           </div>
         </div>
       </div>
-      
+
       {isScreenShare && (
         <div className="absolute top-3 left-3 px-2 py-1 bg-black/70 text-xs text-white font-medium">
           Sharing Screen

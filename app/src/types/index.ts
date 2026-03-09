@@ -19,6 +19,7 @@ export interface Meeting {
   id: string;
   passcode: string;
   hostName: string;
+  meetingName: string;
   participantCount: number;
 }
 

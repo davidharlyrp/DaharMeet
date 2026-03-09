@@ -28,49 +28,20 @@ export function useSocket({
   onNewMessage
 }: UseSocketProps = {}) {
   const socketRef = useRef<Socket | null>(null);
+  const callbacksRef = useRef<UseSocketProps>({});
 
+  // Update callbacks ref when props change
   useEffect(() => {
-    socketRef.current = io(SOCKET_URL);
-    const socket = socketRef.current;
-
-    socket.on('user-joined', ({ userId, name, participant }) => {
-      onUserJoined?.(userId, name, participant);
-    });
-
-    socket.on('user-left', ({ userId, name }) => {
-      onUserLeft?.(userId, name);
-    });
-
-    socket.on('offer', ({ senderId, senderName, offer }) => {
-      onOffer?.(senderId, senderName, offer);
-    });
-
-    socket.on('answer', ({ senderId, answer }) => {
-      onAnswer?.(senderId, answer);
-    });
-
-    socket.on('ice-candidate', ({ senderId, candidate }) => {
-      onIceCandidate?.(senderId, candidate);
-    });
-
-    socket.on('media-state-changed', ({ userId, isMicOn, isCamOn }) => {
-      onMediaStateChanged?.(userId, isMicOn, isCamOn);
-    });
-
-    socket.on('screen-share-started', ({ userId, userName }) => {
-      onScreenShareStarted?.(userId, userName);
-    });
-
-    socket.on('screen-share-stopped', ({ userId }) => {
-      onScreenShareStopped?.(userId);
-    });
-
-    socket.on('new-message', (message) => {
-      onNewMessage?.(message);
-    });
-
-    return () => {
-      socket.disconnect();
+    callbacksRef.current = {
+      onUserJoined,
+      onUserLeft,
+      onOffer,
+      onAnswer,
+      onIceCandidate,
+      onMediaStateChanged,
+      onScreenShareStarted,
+      onScreenShareStopped,
+      onNewMessage
     };
   }, [
     onUserJoined,
@@ -83,6 +54,51 @@ export function useSocket({
     onScreenShareStopped,
     onNewMessage
   ]);
+
+  useEffect(() => {
+    socketRef.current = io(SOCKET_URL);
+    const socket = socketRef.current;
+
+    socket.on('user-joined', ({ userId, name, participant }) => {
+      callbacksRef.current?.onUserJoined?.(userId, name, participant);
+    });
+
+    socket.on('user-left', ({ userId, name }) => {
+      callbacksRef.current?.onUserLeft?.(userId, name);
+    });
+
+    socket.on('offer', ({ senderId, senderName, offer }) => {
+      callbacksRef.current?.onOffer?.(senderId, senderName, offer);
+    });
+
+    socket.on('answer', ({ senderId, answer }) => {
+      callbacksRef.current?.onAnswer?.(senderId, answer);
+    });
+
+    socket.on('ice-candidate', ({ senderId, candidate }) => {
+      callbacksRef.current?.onIceCandidate?.(senderId, candidate);
+    });
+
+    socket.on('media-state-changed', ({ userId, isMicOn, isCamOn }) => {
+      callbacksRef.current?.onMediaStateChanged?.(userId, isMicOn, isCamOn);
+    });
+
+    socket.on('screen-share-started', ({ userId, userName }) => {
+      callbacksRef.current?.onScreenShareStarted?.(userId, userName);
+    });
+
+    socket.on('screen-share-stopped', ({ userId }) => {
+      callbacksRef.current?.onScreenShareStopped?.(userId);
+    });
+
+    socket.on('new-message', (message) => {
+      callbacksRef.current?.onNewMessage?.(message);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []); // Only connect once on mount
 
   const joinMeeting = useCallback((meetingId: string, passcode: string, name: string): Promise<JoinMeetingResponse> => {
     return new Promise((resolve) => {

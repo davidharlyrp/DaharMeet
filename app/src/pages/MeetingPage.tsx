@@ -6,6 +6,7 @@ import { VideoTile } from '@/components/VideoTile';
 import { MeetingControls } from '@/components/MeetingControls';
 import { ChatPanel } from '@/components/ChatPanel';
 import { ParticipantsPanel } from '@/components/ParticipantsPanel';
+import { getMeeting } from '@/lib/api';
 import type { Participant, Message } from '@/types';
 import { toast } from 'sonner';
 
@@ -14,6 +15,7 @@ export function MeetingPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { passcode, userName } = location.state || {};
+  const [meetingName, setMeetingName] = useState<string>('');
 
   const [participants, setParticipants] = useState<Record<string, Participant>>({});
   const [messages, setMessages] = useState<Message[]>([]);
@@ -27,7 +29,7 @@ export function MeetingPage() {
   const handleUserJoined = useCallback((userId: string, name: string, participant: Participant) => {
     setParticipants(prev => ({ ...prev, [userId]: participant }));
     toast.info(`${name} joined the meeting`);
-    
+
     // Create offer for new user
     if (userId !== currentUserId) {
       webRTC.createOffer(userId);
@@ -119,19 +121,25 @@ export function MeetingPage() {
     }
 
     const join = async () => {
+      // Fetch meeting info to get the name
+      const meetingInfo = await getMeeting(meetingId!);
+      if (meetingInfo.success && meetingInfo.meeting) {
+        setMeetingName(meetingInfo.meeting.meetingName);
+      }
+
       // Initialize media first
       await webRTC.initializeMedia(true, true);
-      
+
       // Join via socket
       const response = await socket.joinMeeting(meetingId!, passcode, userName);
-      
+
       if (response.success && response.userId) {
         setCurrentUserId(response.userId);
         setParticipants(response.participants || {});
         setMessages(response.messages || []);
         setScreenSharer(response.screenSharer || null);
         setIsJoined(true);
-        
+
         // Create offers for existing participants
         if (response.participants) {
           Object.keys(response.participants).forEach(peerId => {
@@ -140,7 +148,7 @@ export function MeetingPage() {
             }
           });
         }
-        
+
         toast.success('Joined meeting successfully');
       } else {
         toast.error(response.error || 'Failed to join meeting');
@@ -241,6 +249,11 @@ export function MeetingPage() {
       <header className="h-12 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <span className="text-white font-medium">Meeting ID: {meetingId}</span>
+          <div className='h-6 w-0.5 bg-white' />
+          <span className="text-white font-medium">Passcode: {passcode}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-white font-medium">{meetingName}</span>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-neutral-400 text-sm">
@@ -323,7 +336,7 @@ export function MeetingPage() {
             onSendMessage={handleSendMessage}
           />
         )}
-        
+
         {showParticipants && (
           <ParticipantsPanel
             participants={participants}

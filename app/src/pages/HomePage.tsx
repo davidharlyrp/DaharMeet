@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Video, Plus, ArrowRight, Lock, Copy, Check } from 'lucide-react';
+import { Plus, ArrowRight, Lock, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -11,6 +11,7 @@ export function HomePage() {
   const [meetingId, setMeetingId] = useState('');
   const [passcode, setPasscode] = useState('');
   const [userName, setUserName] = useState('');
+  const [meetingName, setMeetingName] = useState('');
   const [showJoinDialog, setShowJoinDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createdMeeting, setCreatedMeeting] = useState<{ id: string; passcode: string } | null>(null);
@@ -23,12 +24,12 @@ export function HomePage() {
       setError('Please enter your name');
       return;
     }
-    
+
     setLoading(true);
     setError('');
-    
-    const response = await createMeeting(userName);
-    
+
+    const response = await createMeeting(userName, meetingName || 'Dahar Meet');
+
     if (response.success && response.meeting) {
       setCreatedMeeting({
         id: response.meeting.id,
@@ -38,7 +39,7 @@ export function HomePage() {
     } else {
       setError(response.error || 'Failed to create meeting');
     }
-    
+
     setLoading(false);
   };
 
@@ -47,9 +48,9 @@ export function HomePage() {
       setError('Please enter a valid 8-digit meeting ID');
       return;
     }
-    
+
     const response = await getMeeting(meetingId);
-    
+
     if (response.success) {
       setShowJoinDialog(true);
       setError('');
@@ -63,25 +64,25 @@ export function HomePage() {
       setError('Please enter your name');
       return;
     }
-    
+
     if (!passcode.trim() || passcode.length !== 6) {
       setError('Please enter a valid 6-digit passcode');
       return;
     }
-    
+
     setLoading(true);
     setError('');
-    
+
     const response = await validatePasscode(meetingId, passcode);
-    
+
     if (response.success) {
-      navigate(`/meet/${meetingId}`, { 
-        state: { passcode, userName } 
+      navigate(`/meet/${meetingId}`, {
+        state: { passcode, userName }
       });
     } else {
       setError(response.error || 'Invalid passcode');
     }
-    
+
     setLoading(false);
   };
 
@@ -93,11 +94,11 @@ export function HomePage() {
 
   const enterCreatedMeeting = () => {
     if (createdMeeting) {
-      navigate(`/meet/${createdMeeting.id}`, { 
-        state: { 
-          passcode: createdMeeting.passcode, 
-          userName 
-        } 
+      navigate(`/meet/${createdMeeting.id}`, {
+        state: {
+          passcode: createdMeeting.passcode,
+          userName
+        }
       });
     }
   };
@@ -105,12 +106,10 @@ export function HomePage() {
   return (
     <div className="min-h-screen bg-neutral-950 flex flex-col">
       {/* Header */}
-      <header className="h-16 border-b border-neutral-800 flex items-center px-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white flex items-center justify-center">
-            <Video className="w-6 h-6 text-black" />
-          </div>
-          <span className="text-xl font-bold text-white">E-Conference</span>
+      <header className="h-12 border-b border-neutral-800 flex items-center px-6">
+        <div className="flex items-center gap-2">
+          <img src="/logo.png" alt="Logo" className="w-6 h-6" />
+          <span className="text-xl font-bold text-white">DAHAR <span className="text-white">MEET</span></span>
         </div>
       </header>
 
@@ -118,8 +117,8 @@ export function HomePage() {
       <main className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md space-y-6">
           <div className="text-center space-y-2">
-            <h1 className="text-3xl font-bold text-white">Video Conferencing</h1>
-            <p className="text-neutral-400">Secure, high-quality video meetings</p>
+            <h1 className="text-3xl font-bold text-white">DAHAR MEET</h1>
+            <p className="text-neutral-400">Join the meeting now</p>
           </div>
 
           {/* Join Meeting */}
@@ -147,6 +146,12 @@ export function HomePage() {
           <div className="bg-neutral-900 border border-neutral-800 p-6 space-y-4">
             <h2 className="text-lg font-medium text-white">Create New Meeting</h2>
             <div className="space-y-3">
+              <Input
+                value={meetingName}
+                onChange={(e) => setMeetingName(e.target.value)}
+                placeholder="Meeting name (optional)"
+                className="bg-neutral-800 border-neutral-700 rounded-none text-white placeholder:text-neutral-500 h-12"
+              />
               <Input
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}

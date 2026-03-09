@@ -1,16 +1,16 @@
 import type { CreateMeetingResponse, Meeting } from '@/types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL;
 
-export async function createMeeting(hostName: string): Promise<CreateMeetingResponse> {
+export async function createMeeting(hostName: string, meetingName: string): Promise<CreateMeetingResponse> {
   const response = await fetch(`${API_URL}/api/meetings`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ hostName })
+    body: JSON.stringify({ hostName, meetingName })
   });
-  
+
   return response.json();
 }
 
@@ -27,6 +27,6 @@ export async function validatePasscode(meetingId: string, passcode: string): Pro
     },
     body: JSON.stringify({ passcode })
   });
-  
+
   return response.json();
 }
