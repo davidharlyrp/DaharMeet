@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 const ICE_SERVERS = {
   iceServers: [
@@ -15,9 +15,10 @@ interface UseWebRTCProps {
   onOffer: (targetId: string, offer: RTCSessionDescriptionInit) => void;
   onAnswer: (targetId: string, answer: RTCSessionDescriptionInit) => void;
   onIceCandidate: (targetId: string, candidate: RTCIceCandidateInit) => void;
+  onScreenShareEnded?: () => void;
 }
 
-export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps) {
+export function useWebRTC({ onOffer, onAnswer, onIceCandidate, onScreenShareEnded }: UseWebRTCProps) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
@@ -28,6 +29,12 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const onScreenShareEndedRef = useRef(onScreenShareEnded);
+
+  // Keep callback ref in sync
+  useEffect(() => {
+    onScreenShareEndedRef.current = onScreenShareEnded;
+  }, [onScreenShareEnded]);
 
   // Initialize local media
   const initializeMedia = useCallback(async (video: boolean = true, audio: boolean = true) => {
@@ -108,9 +115,10 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate }: UseWebRTCProps)
         }
       });
 
-      // Handle screen share stop
+      // Handle browser's native "Stop sharing" button
       stream.getVideoTracks()[0].onended = () => {
         stopScreenShare();
+        onScreenShareEndedRef.current?.();
       };
 
       return stream;

@@ -114,7 +114,11 @@ export function MeetingPage() {
   const webRTC = useWebRTC({
     onOffer: socket.sendOffer,
     onAnswer: socket.sendAnswer,
-    onIceCandidate: socket.sendIceCandidate
+    onIceCandidate: socket.sendIceCandidate,
+    onScreenShareEnded: () => {
+      // Called when browser's native "Stop sharing" button is clicked
+      socket.stopScreenShare();
+    }
   });
 
   // Keep ref in sync
