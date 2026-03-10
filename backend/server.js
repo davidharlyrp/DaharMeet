@@ -30,16 +30,24 @@ const app = express();
 const server = http.createServer(app);
 
 // Production CORS: restrict to FRONTEND_URL if provided
-const allowedOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : "*";
+const allowedOriginsEnv = process.env.FRONTEND_URL;
+const allowedOrigins = allowedOriginsEnv
+    ? allowedOriginsEnv.split(',').map(o => o.trim())
+    : "*";
+
+console.log(`[CORS] Allowed origins: ${Array.isArray(allowedOrigins) ? allowedOrigins.join(', ') : allowedOrigins}`);
+
 const io = new Server(server, {
     cors: {
         origin: allowedOrigins,
-        methods: ["GET", "POST"]
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
 app.use(cors({
-    origin: allowedOrigins
+    origin: allowedOrigins,
+    credentials: true
 }));
 app.use(express.json());
 
