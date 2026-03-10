@@ -6,8 +6,8 @@
   "scripts": {
     "push": "git add . && git commit -m 'first' && git push -u origin main",
     "fe": "cd app && npm run dev",
-    "be": "cd server && npm start",
-    "rebuild": "cd server && git fetch origin main && git merge origin/main && docker compose down && docker compose up -d --build && cd .."
+    "be": "cd backend && npm start",
+    "rebuild": "cd backend && git fetch origin main && git merge origin/main && docker compose down && docker compose up -d --build && cd .."
   },
   "dependencies": {},
   "devDependencies": {}
