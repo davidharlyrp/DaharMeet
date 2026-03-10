@@ -7,6 +7,18 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
+// Polyfill File for environments where it is undefined
+const { Blob } = require('buffer');
+if (typeof global.File === 'undefined') {
+    global.File = class File extends Blob {
+        constructor(chunks, name, options = {}) {
+            super(chunks, options);
+            this.name = name;
+            this.lastModified = options.lastModified || Date.now();
+        }
+    };
+}
+
 // Configure multer for file uploads
 const uploadDir = path.join(__dirname, 'data', 'uploads');
 if (!fs.existsSync(uploadDir)) {
