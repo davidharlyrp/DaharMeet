@@ -486,10 +486,10 @@ export function MeetingPage() {
       {/* Header */}
       <header className="h-12 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-4">
         <div className="grid grid-cols-2 items-center gap-x-2 text-[10px] md:text-sm w-28 md:w-40">
-          <span className="text-white font-medium bg-red-500 w-fit">Meeting ID</span>
-          <span className="text-white font-medium bg-blue-500 w-20 md:w-24">: {meetingId}</span>
-          <span className="text-white font-medium bg-red-500 w-fit">Passkey</span>
-          <span className="text-white font-medium bg-blue-500 flex items-center gap-2 w-20 md:w-24">: {showPasskey ? passcode : '••••••'}
+          <span className="text-white font-medium w-fit">Meeting ID</span>
+          <span className="text-white font-medium w-20 md:w-24">: {meetingId}</span>
+          <span className="text-white font-medium w-fit">Passkey</span>
+          <span className="text-white font-medium flex items-center gap-2 w-20 md:w-24">: {showPasskey ? passcode : '••••••'}
             <button onClick={() => setShowPasskey(!showPasskey)}>
               {showPasskey ? <EyeOff className="w-3 h-3 cursor-pointer hover:text-white" /> : <Eye className="w-3 h-3 cursor-pointer hover:text-white" />}
             </button>
