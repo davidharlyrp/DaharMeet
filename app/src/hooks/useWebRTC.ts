@@ -181,13 +181,34 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate, onScreenShareEnde
       }
     };
 
-    // Handle remote stream
+    // Logging for debugging
+    peer.onconnectionstatechange = () => {
+      console.log(`Connection state with ${peerId}: ${peer.connectionState}`);
+    };
+    peer.oniceconnectionstatechange = () => {
+      console.log(`ICE state with ${peerId}: ${peer.iceConnectionState}`);
+    };
+
+    // Handle remote stream - more robustly merge tracks
     peer.ontrack = (event) => {
-      const remoteStream = event.streams[0] || new MediaStream([event.track]);
+      console.log(`Received track from ${peerId}:`, event.track.kind);
 
       setRemoteStreams(prev => {
         const newMap = new Map(prev);
-        newMap.set(peerId, remoteStream);
+        let stream = newMap.get(peerId);
+
+        if (!stream) {
+          // If no stream exists for this peer, create one
+          stream = new MediaStream();
+          newMap.set(peerId, stream);
+        }
+
+        // Add the track if it's not already in the stream
+        const existingTracks = stream.getTracks();
+        if (!existingTracks.find(t => t.id === event.track.id)) {
+          stream.addTrack(event.track);
+        }
+
         return newMap;
       });
     };

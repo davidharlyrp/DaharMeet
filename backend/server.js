@@ -76,12 +76,15 @@ const getActiveMeeting = (meetingId) => {
 
 // POST /api/recordings - Upload a recording
 app.post('/api/recordings', upload.single('file'), async (req, res) => {
+    console.log(`[Recording] POST request received for meetingId: ${req.body.meetingId || 'MISSING'}, userName: ${req.body.userName || 'MISSING'}`);
     try {
         if (!req.file) {
+            console.error('[Recording] No file found in request');
             return res.status(400).json({ success: false, error: 'No file uploaded' });
         }
 
         const { meetingId, userName, duration } = req.body;
+        console.log(`[Recording] File received: ${req.file.originalname}, size: ${req.file.size} bytes`);
         if (!meetingId || !userName) {
             fs.unlinkSync(req.file.path);
             return res.status(400).json({ success: false, error: 'meetingId and userName are required' });

@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { Participant, Message, CameraSettings } from '@/types';
 import { toast } from 'sonner';
-import { ArrowRight, Copy, Eye, EyeOff, Users } from 'lucide-react';
+import { ArrowRight, Copy, Eye, EyeOff, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export function MeetingPage() {
   const { meetingId } = useParams<{ meetingId: string }>();
@@ -49,6 +49,11 @@ export function MeetingPage() {
   });
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [isJoined, setIsJoined] = useState(false);
+
+  // Resizable sidebar state
+  const [sidebarWidth, setSidebarWidth] = useState(256); // Default 256px
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
 
   // Refs to avoid stale closures in callbacks
   const currentUserIdRef = useRef<string>('');
@@ -175,7 +180,6 @@ export function MeetingPage() {
   const recording = useRecording({
     localStream: webRTC.localStream,
     remoteStreams: webRTC.remoteStreams,
-    screenStream: webRTC.screenStream,
     meetingId: meetingId || '',
     userName,
   });
@@ -267,6 +271,37 @@ export function MeetingPage() {
     }
   }, [webRTC.isMicOn, webRTC.isCamOn, isJoined]);
 
+  // Handle sidebar resize
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingSidebar) return;
+      // Calculate new width: viewport width - mouse X position
+      // because sidebar is on the right side
+      const newWidth = document.body.clientWidth - e.clientX;
+      if (newWidth >= 160 && newWidth <= 800) {
+        setSidebarWidth(newWidth);
+      }
+    };
+    const handleMouseUp = () => {
+      setIsDraggingSidebar(false);
+    };
+
+    if (isDraggingSidebar) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      // prevent selection while dragging
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.userSelect = '';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+    };
+  }, [isDraggingSidebar]);
+
   // Handle toggle mic
   const handleToggleMic = () => {
     webRTC.toggleMic();
@@ -283,27 +318,32 @@ export function MeetingPage() {
       webRTC.stopScreenShare();
       socket.stopScreenShare();
     } else {
-      const response = await socket.requestScreenShare();
-      if (response.success) {
-        const stream = await webRTC.startScreenShare();
-        if (stream) {
+      // Prompt user to pick a screen first before telling the backend
+      const stream = await webRTC.startScreenShare();
+      if (stream) {
+        // Once screen is selected & allowed, request lock from backend
+        const response = await socket.requestScreenShare();
+        if (response.success) {
           toast.success('Screen sharing started');
         } else {
-          toast.error('Failed to start screen sharing');
+          // If backend rejects (e.g., someone else already sharing), stop the local stream
+          webRTC.stopScreenShare();
+          toast.error(response.error || 'Cannot share screen');
         }
       } else {
-        toast.error(response.error || 'Cannot share screen');
+        // User cancelled the prompt, no action needed on backend
+        toast.info('Screen sharing canceled');
       }
     }
   };
 
   // Handle toggle recording
-  const handleToggleRecording = () => {
+  const handleToggleRecording = async () => {
     if (recording.isRecording) {
       recording.stopRecording();
       toast.info('Recording stopped. Uploading...');
     } else {
-      const success = recording.startRecording();
+      const success = await recording.startRecording();
       if (success) {
         toast.success('Recording started');
       } else {
@@ -484,8 +524,8 @@ export function MeetingPage() {
         <div className="flex-1 flex overflow-hidden">
           {isAnyoneScreenSharing ? (
             /* Theater Mode: Screen Share Main, Others Sidebar */
-            <div className="flex md:flex-row flex-col overflow-hidden">
-              <div className="flex-1 bg-neutral-900 p-2 overflow-hidden">
+            <div className="flex md:flex-row flex-col overflow-hidden w-full relative">
+              <div className="flex-1 bg-neutral-900 p-2 overflow-hidden relative">
                 {screenShareStream ? (
                   <VideoTile
                     stream={screenShareStream}
@@ -500,31 +540,53 @@ export function MeetingPage() {
                     <p className="text-white">Connecting to screen share...</p>
                   </div>
                 )}
+
+                {/* Toggle Button for Video Grid Sidebar */}
+                <button
+                  onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 bg-neutral-800 hover:bg-neutral-700 text-white p-1.5 rounded-l-md border border-r-0 border-neutral-700 z-10 transition-colors shadow-lg hidden md:block"
+                  title={isSidebarVisible ? "Hide Video Grid" : "Show Video Grid"}
+                >
+                  {isSidebarVisible ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                </button>
               </div>
 
-              {/* Sidebar in Theater Mode */}
-              <div className="w-64 bg-neutral-950 border-l border-neutral-800 p-2 overflow-y-auto space-y-2">
-                <VideoTile
-                  stream={webRTC.localStream}
-                  userName={userName}
-                  isMicOn={webRTC.isMicOn}
-                  isCamOn={webRTC.isCamOn}
-                  isLocal={true}
-                  cameraSettings={cameraSettings}
-                  className="w-full aspect-video"
+              {/* Resizer Handle */}
+              {isSidebarVisible && (
+                <div
+                  className="w-1 cursor-col-resize hover:bg-neutral-500 bg-neutral-800 transition-colors z-10 hidden md:block"
+                  onMouseDown={(e) => { e.preventDefault(); setIsDraggingSidebar(true); }}
                 />
-                {videoStreams.map(([peerId, stream]) => (
+              )}
+
+              {/* Sidebar in Theater Mode */}
+              {isSidebarVisible && (
+                <div
+                  className={`bg-neutral-950 p-2 overflow-y-auto space-y-2 flex-shrink-0 md:border-l border-neutral-800 ${isDraggingSidebar ? 'pointer-events-none' : ''}`}
+                  style={{ width: window.innerWidth < 768 ? '100%' : `${sidebarWidth}px` }}
+                >
                   <VideoTile
-                    key={peerId}
-                    stream={stream}
-                    userName={participants[peerId]?.name || 'Unknown'}
-                    isMicOn={participants[peerId]?.isMicOn || false}
-                    isCamOn={participants[peerId]?.isCamOn || false}
-                    cameraSettings={participants[peerId]?.cameraSettings}
+                    stream={webRTC.localStream}
+                    userName={userName}
+                    isMicOn={webRTC.isMicOn}
+                    isCamOn={webRTC.isCamOn}
+                    isLocal={true}
+                    cameraSettings={cameraSettings}
                     className="w-full aspect-video"
                   />
-                ))}
-              </div>
+                  {videoStreams.map(([peerId, stream]) => (
+                    <VideoTile
+                      key={peerId}
+                      stream={stream}
+                      userName={participants[peerId]?.name || 'Unknown'}
+                      isMicOn={participants[peerId]?.isMicOn || false}
+                      isCamOn={participants[peerId]?.isCamOn || false}
+                      cameraSettings={participants[peerId]?.cameraSettings}
+                      className="w-full aspect-video"
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             /* Grid Mode: All Participants in a responsive grid */

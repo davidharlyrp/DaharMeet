@@ -28,10 +28,24 @@ export function VideoTile({
 
   useEffect(() => {
     if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
+      // Only update srcObject if it's different to avoid flicker
+      if (videoRef.current.srcObject !== stream) {
+        videoRef.current.srcObject = stream;
+      }
+
+      // Explicitly call play() whenever stream is set or status changes
+      if (isCamOn || isScreenShare) {
+        videoRef.current.play().catch(e => {
+          console.warn('Video play failed, will retry on user interaction or next update:', e);
+        });
+      }
     }
+
     if (audioRef.current && stream && !isLocal) {
-      audioRef.current.srcObject = stream;
+      if (audioRef.current.srcObject !== stream) {
+        audioRef.current.srcObject = stream;
+      }
+      audioRef.current.play().catch(() => { }); // silent catch for audio autoplay
     }
   }, [stream, isLocal, isCamOn, isScreenShare]);
 
@@ -45,20 +59,21 @@ export function VideoTile({
       )}
 
       {/* Always keep video element mounted to preserve srcObject */}
+      {/* We use opacity and relative/absolute positioning instead of display:none 
+          to prevent some browsers from pausing or dropping the stream buffer */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted={true}
-        className={`w-full h-full object-contain ${!cameraSettings && isLocal && !isScreenShare ? '-scale-x-100' : ''}`}
+        className={`w-full h-full object-contain transition-opacity duration-300 ${!cameraSettings && isLocal && !isScreenShare ? '-scale-x-100' : ''} ${showVideo ? 'opacity-100' : 'opacity-0 absolute'}`}
         style={{
-          display: showVideo ? 'block' : 'none',
           transform: cameraSettings ? `rotate(${cameraSettings.rotation}deg) scaleX(${cameraSettings.flipH ? -1 : 1}) scaleY(${cameraSettings.flipV ? -1 : 1})` : undefined
         }}
       />
 
       {!showVideo && (
-        <div className="w-full h-full flex items-center justify-center bg-neutral-800">
+        <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-neutral-800 transition-opacity duration-300">
           <div className="w-16 h-16 rounded-full bg-neutral-700 flex items-center justify-center">
             <span className="text-xl font-medium text-neutral-400">
               {userName.charAt(0).toUpperCase()}
