@@ -1,15 +1,32 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-const ICE_SERVERS = {
-  iceServers: [
+const getIceServers = () => {
+  const iceServers: RTCIceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.services.mozilla.com' },
-  ]
+  ];
+
+  const turnUrl = import.meta.env.VITE_TURN_URL;
+  const turnUsername = import.meta.env.VITE_TURN_USERNAME;
+  const turnPassword = import.meta.env.VITE_TURN_PASSWORD;
+
+  if (turnUrl) {
+    iceServers.push({
+      urls: turnUrl,
+      username: turnUsername,
+      credential: turnPassword,
+    });
+    console.log('[WebRTC] Custom TURN server configured');
+  }
+
+  return { iceServers };
 };
+
+const ICE_SERVERS = getIceServers();
 
 interface UseWebRTCProps {
   onOffer: (targetId: string, offer: RTCSessionDescriptionInit) => void;
@@ -177,16 +194,33 @@ export function useWebRTC({ onOffer, onAnswer, onIceCandidate, onScreenShareEnde
     // Handle ICE candidates
     peer.onicecandidate = (event) => {
       if (event.candidate) {
+        // Detailed log for debugging candidate types
+        const candidate = event.candidate.candidate;
+        const typeMatch = candidate.match(/typ\s+(\w+)/);
+        const protocolMatch = candidate.match(/(udp|tcp)/i);
+        const type = typeMatch ? typeMatch[1] : 'unknown';
+        const protocol = protocolMatch ? protocolMatch[1] : 'unknown';
+
+        console.log(`[WebRTC] Local ICE Candidate (${type} / ${protocol}) for ${peerId}`);
         onIceCandidate(peerId, event.candidate);
       }
     };
 
     // Logging for debugging
     peer.onconnectionstatechange = () => {
-      console.log(`Connection state with ${peerId}: ${peer.connectionState}`);
+      const state = peer.connectionState;
+      console.log(`[WebRTC] Connection state with ${peerId}: ${state}`);
+      if (state === 'failed') {
+        console.error(`[WebRTC] Connection FAILED with ${peerId}. This usually means a TURN server is required for this network.`);
+      }
     };
+
     peer.oniceconnectionstatechange = () => {
-      console.log(`ICE state with ${peerId}: ${peer.iceConnectionState}`);
+      console.log(`[WebRTC] ICE state with ${peerId}: ${peer.iceConnectionState}`);
+    };
+
+    peer.onicegatheringstatechange = () => {
+      console.log(`[WebRTC] ICE Gathering state: ${peer.iceGatheringState}`);
     };
 
     // Handle remote stream - more robustly merge tracks
