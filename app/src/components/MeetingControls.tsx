@@ -1,4 +1,4 @@
-import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, PhoneOff, MessageSquare, Users, Circle, Settings } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, MessageSquare, Users, Circle, Settings, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface MeetingControlsProps {
@@ -103,7 +103,7 @@ export function MeetingControls({
           onClick={onLeave}
           className="rounded-none bg-red-600 hover:bg-red-700"
         >
-          <PhoneOff className="w-5 h-5" />
+          <LogOut className="w-5 h-5" />
         </Button>
       </div>
 

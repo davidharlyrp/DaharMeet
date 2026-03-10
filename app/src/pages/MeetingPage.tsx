@@ -263,7 +263,6 @@ export function MeetingPage() {
     setJoinLoading(false);
   };
 
-
   // Update media state to others
   useEffect(() => {
     if (isJoined) {
@@ -486,11 +485,11 @@ export function MeetingPage() {
     <div className="h-screen bg-neutral-950 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="h-12 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-4">
-        <div className="grid grid-cols-2 items-center gap-x-2 text-[10px] md:text-sm w-52">
-          <span className="text-white font-medium">Meeting ID</span>
-          <span className="text-white font-medium">: {meetingId}</span>
-          <span className="text-white font-medium">Passkey</span>
-          <span className="text-white font-medium flex items-center gap-2">: {showPasskey ? passcode : '••••••'}
+        <div className="grid grid-cols-2 items-center gap-x-2 text-[10px] md:text-sm w-28 md:w-40">
+          <span className="text-white font-medium bg-red-500 w-fit">Meeting ID</span>
+          <span className="text-white font-medium bg-blue-500 w-20 md:w-24">: {meetingId}</span>
+          <span className="text-white font-medium bg-red-500 w-fit">Passkey</span>
+          <span className="text-white font-medium bg-blue-500 flex items-center gap-2 w-20 md:w-24">: {showPasskey ? passcode : '••••••'}
             <button onClick={() => setShowPasskey(!showPasskey)}>
               {showPasskey ? <EyeOff className="w-3 h-3 cursor-pointer hover:text-white" /> : <Eye className="w-3 h-3 cursor-pointer hover:text-white" />}
             </button>
@@ -501,8 +500,10 @@ export function MeetingPage() {
             )}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-[10px] md:text-sm">
-          <span className="text-white font-medium">{meetingName}</span>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-white font-medium">
+            {meetingName && meetingName.length > 15 ? meetingName.substring(0, 15) + '..' : meetingName}
+          </span>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-neutral-400 text-[10px] md:text-sm flex items-center gap-1">
@@ -590,12 +591,28 @@ export function MeetingPage() {
             </div>
           ) : (
             /* Grid Mode: All Participants in a responsive grid */
-            <div className="flex-1 bg-neutral-950 p-4 grid gap-4 auto-rows-fr"
+            <div className="participant-grid flex-1 bg-neutral-950 p-4 grid gap-4 items-center auto-rows-min overflow-y-auto max-h-[calc(100vh-120px)]"
               style={{
-                gridTemplateColumns: `repeat(auto-fit, minmax(${Object.keys(participants).length <= 1 ? '400px' :
-                  Object.keys(participants).length <= 4 ? '300px' : '200px'
-                  }, 1fr))`
+                // Calculate columns: at least 1, at most 4
+                // We use auto-fill with a minimum width that naturally allows 4 on typical screens
+                // but we also cap the template columns if participants are few
+                gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${Object.keys(participants).length <= 0 ? '500px' :
+                  Object.keys(participants).length < 2 ? '400px' :
+                    Object.keys(participants).length < 4 ? '300px' : '250px'
+                  }), 1fr))`
               }}>
+              {/* To strictly enforce max 4 columns on large screens while keeping it responsive,
+                  we can also use a max-width on the grid or logic. 
+                  However, "repeat(auto-fit...)" is the standard approach.
+                  For strictly max 4, we use: */}
+              <style dangerouslySetInnerHTML={{
+                __html: `
+                @media (min-width: 1200px) {
+                  .participant-grid {
+                    grid-template-columns: repeat(${Math.min(Object.keys(participants).length + 1, 4)}, 1fr) !important;
+                  }
+                }
+              `}} />
               <VideoTile
                 stream={webRTC.localStream}
                 userName={userName}
@@ -603,7 +620,7 @@ export function MeetingPage() {
                 isCamOn={webRTC.isCamOn}
                 isLocal={true}
                 cameraSettings={cameraSettings}
-                className="w-full h-full"
+                className="w-full min-h-[240px] h-[300px]"
               />
               {Array.from(webRTC.remoteStreams.entries()).map(([peerId, stream]) => (
                 <VideoTile
@@ -613,12 +630,12 @@ export function MeetingPage() {
                   isMicOn={participants[peerId]?.isMicOn || false}
                   isCamOn={participants[peerId]?.isCamOn || false}
                   cameraSettings={participants[peerId]?.cameraSettings}
-                  className="w-full h-full"
+                  className="w-full min-h-[240px] h-[300px]"
                 />
               ))}
 
               {Object.keys(participants).length === 0 && (
-                <div className="col-span-full flex items-center justify-center">
+                <div className="col-span-full flex items-center justify-center py-20">
                   <p className="text-neutral-500 text-sm">Waiting for others to join...</p>
                 </div>
               )}
