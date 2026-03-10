@@ -1,0 +1,11 @@
+{
+  "name": "my-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "push": "git add . && git commit -m 'first'&& git push -u origin main"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
